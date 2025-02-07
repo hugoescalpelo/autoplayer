@@ -3,6 +3,9 @@ import random
 import subprocess
 import time
 
+# Esperar 10 segundos para asegurarse de que X11 esté listo
+time.sleep(10)
+
 # Ruta base donde están las carpetas de categorías
 BASE_PATH = "/ruta/a/tus/videos"  # <- Modifica con la ruta real
 DURACION_TOTAL_PLAYLIST = 36000  # 10 horas en segundos
