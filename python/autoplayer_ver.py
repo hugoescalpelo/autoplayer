@@ -4,9 +4,9 @@ import subprocess
 import time
 
 # Ruta base donde están las carpetas de categorías
-BASE_PATH = "/home/pi/Documents/video_vertical"  # <- Modifica con la ruta real
-DURACION_CATEGORIA = 40  # Segundos totales por categoría
-DURACION_VIDEO_PROMEDIO = 10  # Duración estimada por video
+BASE_PATH = "/ruta/a/tus/videos"  # <- Modifica con la ruta real
+DURACION_TOTAL_PLAYLIST = 36000  # 10 horas en segundos
+DURACION_VIDEO_PROMEDIO = 10  # Estimado de duración por video
 
 def obtener_videos(categoria):
     """ Obtiene videos de la categoría recibida """
@@ -24,46 +24,43 @@ def obtener_videos(categoria):
     lista_videos = [video_texto] if video_texto else []
 
     duracion_actual = 0
-    while duracion_actual < DURACION_CATEGORIA:
+    while duracion_actual < DURACION_TOTAL_PLAYLIST:
         video = random.choice(videos_video)
         lista_videos.append(video)
         duracion_actual += DURACION_VIDEO_PROMEDIO
 
     return lista_videos
 
-def reproducir_video(video, duracion_restante):
-    """ Reproduce un video rotado 90° """
-    print(f"🎥 Reproduciendo (rotado 90°): {video} | Tiempo disponible: {duracion_restante:.1f} s")
+def generar_playlist():
+    """ Genera una playlist de 10 horas con videos aleatorios """
+    categorias = [cat for cat in os.listdir(BASE_PATH) if os.path.isdir(os.path.join(BASE_PATH, cat))]
+    playlist = []
+    duracion_actual = 0
 
-    subprocess.run(["mpv", "--fs", "--really-quiet", "--no-terminal", "--video-rotate=90", "--length=" + str(duracion_restante), video])
+    while duracion_actual < DURACION_TOTAL_PLAYLIST:
+        categoria = random.choice(categorias)
+        videos_categoria = obtener_videos(categoria)
+        
+        if videos_categoria:
+            playlist.extend(videos_categoria)
+            duracion_actual += len(videos_categoria) * DURACION_VIDEO_PROMEDIO
 
-def reproducir_videos(lista_videos):
-    """ Reproduce los videos y ajusta el tiempo total a 40s """
-    tiempo_inicio = time.time()
+    return playlist
 
-    for video in lista_videos:
-        tiempo_restante = DURACION_CATEGORIA - (time.time() - tiempo_inicio)
+def reproducir_playlist(playlist):
+    """ Guarda la playlist en un archivo y la reproduce con mpv sin interrupciones """
+    playlist_path = "/tmp/playlist.txt"
+    with open(playlist_path, "w") as f:
+        for video in playlist:
+            f.write(f"{video}\n")
 
-        if tiempo_restante <= 0:
-            break
-
-        reproducir_video(video, min(tiempo_restante, DURACION_VIDEO_PROMEDIO))
+    print("🎥 Reproduciendo playlist de 10 horas sin interrupciones...")
+    subprocess.run(["mpv", "--fs", "--really-quiet", "--no-terminal", "--video-rotate=90", "--playlist=" + playlist_path])
 
 def main():
-    categorias = [cat for cat in os.listdir(BASE_PATH) if os.path.isdir(os.path.join(BASE_PATH, cat))]
-
-    while True:
-        categoria = random.choice(categorias)
-        print(f"\n🔄 Cambiando a categoría: {categoria}")
-
-        videos_a_reproducir = obtener_videos(categoria)
-
-        if videos_a_reproducir:
-            reproducir_videos(videos_a_reproducir)
-        else:
-            print(f"⚠️ No hay suficientes videos en {categoria}")
-
-        time.sleep(0.5)  # Pequeña pausa antes de la siguiente categoría
+    while True:  # Se ejecuta en bucle infinito
+        playlist = generar_playlist()
+        reproducir_playlist(playlist)
 
 if __name__ == "__main__":
     main()
