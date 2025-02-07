@@ -48,17 +48,14 @@ def generar_playlist():
     return playlist
 
 def reproducir_playlist(playlist):
-    """ Guarda la playlist en un archivo y la reproduce con mpv sin interrupciones y con Stretch """
+    """ Guarda la playlist en un archivo y la reproduce con mpv sin interrupciones """
     playlist_path = "/tmp/playlist.txt"
     with open(playlist_path, "w") as f:
         for video in playlist:
             f.write(f"{video}\n")
 
-    print("🎥 Reproduciendo playlist de 10 horas sin interrupciones y con Stretch...")
-    subprocess.run([
-        "mpv", "--fs", "--really-quiet", "--no-terminal", "--video-rotate=90",
-        "--no-keepaspect", "--video-aspect-override=1", "--playlist=" + playlist_path
-    ])
+    print("🎥 Reproduciendo playlist de 10 horas sin interrupciones...")
+    subprocess.run(["mpv", "--fs", "--really-quiet", "--no-terminal", "--video-rotate=90", "--playlist=" + playlist_path])
 
 def main():
     while True:  # Se ejecuta en bucle infinito
