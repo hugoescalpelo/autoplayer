@@ -65,4 +65,3 @@ while True:
     except Exception as e:
         print(f"❌ Error en la escucha UDP: {e}")
         time.sleep(1)
-    

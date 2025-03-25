@@ -1,63 +1,40 @@
+from gpiozero import Button
+from signal import pause
 import socket
-import json
-import socket as usocket
-import os
 import time
 
-SOCKET_PATH = "/tmp/mpvsocket"
+# Pines físicos
+BTN_LEFT = Button(17, pull_up=True, bounce_time=0.1)
+BTN_RIGHT = Button(22, pull_up=True, bounce_time=0.1)
+BTN_MENU = Button(27, pull_up=True, bounce_time=0.1)
+
+# Envío por UDP
+UDP_IP = "255.255.255.255"
 UDP_PORT = 5006
-
-# Secuencia de modos para LOCAL_CYCLE_MODE
-mode_index = 0
-modes = [
-    {"command": ["cycle", "video-rotate"]},
-    {"command": ["add", "video-zoom", 0.5]},
-    {"command": ["add", "video-zoom", -0.5]},
-    {"command": ["seek", 0, "absolute"]}  # Cambio de video A/B opcional
-]
-
-def wait_for_socket():
-    while not os.path.exists(SOCKET_PATH):
-        print("⏳ Esperando socket de mpv...")
-        time.sleep(1)
-
-def send_mpv_command(command):
-    try:
-        client = usocket.socket(usocket.AF_UNIX, usocket.SOCK_STREAM)
-        client.connect(SOCKET_PATH)
-        client.send(json.dumps(command).encode() + b'\n')
-        client.close()
-    except Exception as e:
-        print(f"⚠️ Error enviando comando a mpv: {e}")
-
-wait_for_socket()
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(("", UDP_PORT))
-print("📡 Follower receptor en espera...")
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-while True:
-    try:
-        data, addr = sock.recvfrom(1024)
-        command = data.decode().strip()
-        print(f"🎬 Comando recibido: {command}")
+def send_global(command):
+    print(f"🌐 Enviando comando global: {command}")
+    sock.sendto(command.encode(), (UDP_IP, UDP_PORT))
 
-        if command == "GLOBAL_TOGGLE_PLAY":
-            send_mpv_command({"command": ["cycle", "pause"]})
-        elif command == "GLOBAL_NEXT_GROUP":
-            send_mpv_command({"command": ["set_property", "time-pos", 0]})
-        elif command == "GLOBAL_PREV_GROUP":
-            send_mpv_command({"command": ["set_property", "time-pos", 0]})
-        elif command == "LOCAL_REWIND":
-            send_mpv_command({"command": ["seek", -5, "relative"]})
-        elif command == "LOCAL_FAST_FORWARD":
-            send_mpv_command({"command": ["seek", 5, "relative"]})
-        elif command == "LOCAL_CYCLE_MODE":
-            global mode_index                             # ✅ Esto va primero
-            send_mpv_command(modes[mode_index])
-            print(f"🔄 Ejecutando modo local: {modes[mode_index]}")
-            mode_index = (mode_index + 1) % len(modes)
+def execute_local(command):
+    print(f"💻 Ejecutando comando local: {command}")
+    sock.sendto(command.encode(), ("127.0.0.1", UDP_PORT))
 
-    except Exception as e:
-        print(f"❌ Error en receptor UDP: {e}")
-        time.sleep(1)
+def handle_button(button, short_cmd, long_cmd):
+    pressed_time = time.time()
+    while button.is_pressed:
+        time.sleep(0.01)
+    duration = time.time() - pressed_time
+    if duration < 0.5:
+        (send_global if "GLOBAL" in short_cmd else execute_local)(short_cmd)
+    else:
+        (send_global if "GLOBAL" in long_cmd else execute_local)(long_cmd)
+
+BTN_LEFT.when_pressed = lambda: handle_button(BTN_LEFT, "GLOBAL_PREV_GROUP", "LOCAL_REWIND")
+BTN_RIGHT.when_pressed = lambda: handle_button(BTN_RIGHT, "GLOBAL_NEXT_GROUP", "LOCAL_FAST_FORWARD")
+BTN_MENU.when_pressed = lambda: handle_button(BTN_MENU, "GLOBAL_TOGGLE_PLAY", "LOCAL_CYCLE_MODE")
+
+print("🎛️ Controlador de botones listo.")
+pause()
