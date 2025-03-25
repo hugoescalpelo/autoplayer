@@ -14,7 +14,7 @@ def wait_for_socket():
 
 def send_mpv_command(command):
     try:
-        client = usocket.socket(usocket.AF_UNIX, usocket.SOCK_STREAM)
+        client = usocket.socket(usocket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(SOCKET_PATH)
         client.send(json.dumps(command).encode() + b'\n')
         client.close()
@@ -42,3 +42,4 @@ while True:
     except Exception as e:
         print(f"❌ Error en receptor UDP: {e}")
         time.sleep(1)
+
