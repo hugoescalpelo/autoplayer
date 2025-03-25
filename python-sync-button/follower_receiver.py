@@ -7,8 +7,8 @@ import time
 SOCKET_PATH = "/tmp/mpvsocket"
 UDP_PORT = 5006
 
-# Secuencia de modos para LOCAL_CYCLE_MODE
-mode_index = 0
+# Usamos una lista para almacenar el índice de modo
+state = {"mode_index": 0}
 modes = [
     {"command": ["cycle", "video-rotate"]},
     {"command": ["add", "video-zoom", 0.5]},
@@ -53,10 +53,11 @@ while True:
         elif command == "LOCAL_FAST_FORWARD":
             send_mpv_command({"command": ["seek", 5, "relative"]})
         elif command == "LOCAL_CYCLE_MODE":
-            global mode_index
-            send_mpv_command(modes[mode_index])
-            print(f"🔄 Ejecutando modo local: {modes[mode_index]}")
-            mode_index = (mode_index + 1) % len(modes)
+            current_mode = state["mode_index"]
+            send_mpv_command(modes[current_mode])
+            print(f"🔄 Ejecutando modo local: {modes[current_mode]}")
+            state["mode_index"] = (current_mode + 1) % len(modes)
+
     except Exception as e:
         print(f"❌ Error en receptor UDP: {e}")
         time.sleep(1)
