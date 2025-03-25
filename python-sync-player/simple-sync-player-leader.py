@@ -4,7 +4,7 @@ import time
 import subprocess
 
 VIDEO_PATH = "/home/pione/Videos/videoA.mp4"
-SLAVE_IP = "192.168.1.97"  # ← IP de la otra Raspberry Pi
+SLAVE_IP = "192.168.1.121"  # ← IP de la otra Raspberry Pi
 PORT = 5005
 
 # Iniciar el video en modo pausa
