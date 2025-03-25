@@ -53,10 +53,11 @@ while True:
         elif command == "LOCAL_FAST_FORWARD":
             send_mpv_command({"command": ["seek", 5, "relative"]})
         elif command == "LOCAL_CYCLE_MODE":
-            global mode_index
+            global mode_index                             # ✅ Esto va primero
             send_mpv_command(modes[mode_index])
             print(f"🔄 Ejecutando modo local: {modes[mode_index]}")
             mode_index = (mode_index + 1) % len(modes)
+
     except Exception as e:
         print(f"❌ Error en receptor UDP: {e}")
         time.sleep(1)
