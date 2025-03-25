@@ -4,7 +4,7 @@ import subprocess
 import time
 import os
 
-VIDEO_PATH = "/home/pitwo/Videos/videoB.mp4"
+VIDEO_PATH = "/home/pitwo/Videos/VideoB.mp4"
 PORT = 5005
 
 # Iniciar mpv en pausa y fullscreen

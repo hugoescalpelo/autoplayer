@@ -4,7 +4,7 @@ import time
 import subprocess
 import os
 
-VIDEO_PATH = "/home/pione/Videos/videoA.mp4"
+VIDEO_PATH = "/home/pione/Videos/VideoA.mp4"
 SLAVE_IP = "192.168.1.121"  # Cambia esto por la IP de la slave
 PORT = 5005
 
