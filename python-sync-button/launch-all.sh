@@ -3,12 +3,12 @@ echo "🚀 Iniciando todos los procesos en Leader..."
 
 cd /home/pione/Documents/GitHub/autoplayer/python-sync-button/
 
-echo "🎬 Ejecutando leader_sync.py"
+echo "🎬 Ejecutando leader-sync.py"
 python3 leader_sync.py &
 
 sleep 2
 
-echo "📡 Ejecutando leader_receiver.py"
+echo "📡 Ejecutando leader-receiver.py"
 python3 leader_receiver.py &
 
 echo "🎛️ Ejecutando leader-buttons.py"
