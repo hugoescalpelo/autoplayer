@@ -11,5 +11,5 @@ sleep 2
 echo "📡 Ejecutando leader_receiver.py"
 python3 leader_receiver.py &
 
-echo "🎛️ Ejecutando gpio_controller_3buttons.py"
-python3 gpio_controller_3buttons.py &
+echo "🎛️ Ejecutando leader-buttons.py"
+python3 leader-buttons.py &
