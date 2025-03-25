@@ -15,9 +15,9 @@ Este programa reproduce dos videos de forma sincronizada. Se deben cumplir manua
     sudo apt update
     sudo apt install -y mpv
     ```
-- Instalar el simulador de teclas presionadas
+- Instalar socat para sincronizar los reproductores
     ```
-    sudo apt install xdotool
+    sudo apt install -y socat
     ```
 
 Se recomienda clonar el repositorio con github.
