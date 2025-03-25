@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "🚀 Iniciando todos los procesos en Leader..."
 
-cd /home/user/Documents/GitHub/autoplayer/python-sync-button/
+cd /home/pione/Documents/GitHub/autoplayer/python-sync-button/
 
 echo "🎬 Ejecutando leader_sync.py"
 python3 leader_sync.py &
