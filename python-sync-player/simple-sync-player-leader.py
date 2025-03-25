@@ -1,24 +1,24 @@
-# master_sync.py
+# master_trigger.py
 import socket
 import time
 import subprocess
 
-VIDEO_PATH = "/home/pi/videos/videoA.mp4"
-SLAVE_IP = "192.168.1.42"  # ← IP de la otra Raspberry Pi
+VIDEO_PATH = "/home/pione/Videos/videoA.mp4"
+SLAVE_IP = "192.168.1.97"  # ← IP de la otra Raspberry Pi
 PORT = 5005
 
-def send_sync_signal():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.sendto(b"PLAY", (SLAVE_IP, PORT))
+# Iniciar el video en modo pausa
+subprocess.Popen([
+    "mpv", "--fs", "--no-terminal", "--pause", VIDEO_PATH
+])
 
-def play_local_video():
-    subprocess.Popen([
-        "mpv", "--fs", "--no-osc", "--no-input-default-bindings",
-        "--really-quiet", "--no-terminal", VIDEO_PATH
-    ])
+print("⌛ Preparando sincronización...")
+time.sleep(3)  # Tiempo para que ambas carguen
 
-print("⌛ Esperando 3 segundos para sincronizar...")
-time.sleep(3)
-send_sync_signal()
-print("📡 Señal enviada. Reproduciendo video...")
-play_local_video()
+# Enviar trigger
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(b"START", (SLAVE_IP, PORT))
+print("📡 Trigger enviado. También iniciando reproducción local.")
+
+# Enviar "unpause" localmente
+subprocess.run(["mpv", "ipc:///tmp/mpv-socket", "--input-ipc-server=/tmp/mpv-socket"], timeout=1)
