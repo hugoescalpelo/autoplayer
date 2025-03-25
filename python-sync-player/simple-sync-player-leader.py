@@ -1,27 +1,27 @@
-# master_trigger.py
 import socket
 import time
 import subprocess
-import os
+import datetime
 
 VIDEO_PATH = "/home/pione/Videos/VideoA.mp4"
-SLAVE_IP = "192.168.1.121"  # Cambia esto por la IP de la slave
+FOLLOWER_IP = "192.168.1.121"
 PORT = 5005
 
-# Iniciar mpv en pausa
-print("🕒 Cargando video en pausa...")
-subprocess.Popen([
-    "mpv", "--fs", "--pause", "--no-terminal", VIDEO_PATH
-])
+# Calcular hora de reproducción (3 segundos en el futuro)
+start_time = datetime.datetime.now() + datetime.timedelta(seconds=3)
+start_str = start_time.strftime("%H:%M:%S")
 
-# Dar tiempo para cargar
-time.sleep(3)
+print(f"⌛ Reproducción programada para: {start_str}")
 
-# Enviar trigger UDP
-print("📡 Enviando señal START a slave...")
+# Enviar la hora al follower
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(b"START", (SLAVE_IP, PORT))
+sock.sendto(start_str.encode(), (FOLLOWER_IP, PORT))
 
-# Enviar tecla 'p' al proceso de mpv local
-print("🎬 Despausando video local...")
-os.system("xdotool search --class mpv key p")
+# Esperar hasta que llegue la hora
+while datetime.datetime.now() < start_time:
+    time.sleep(0.05)
+
+# Reproducir video en loop
+subprocess.run([
+    "mpv", "--fs", "--no-terminal", "--loop", VIDEO_PATH
+])

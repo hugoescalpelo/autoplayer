@@ -1,27 +1,31 @@
-# slave_listener.py
 import socket
-import subprocess
 import time
-import os
+import subprocess
+import datetime
 
 VIDEO_PATH = "/home/pitwo/Videos/VideoB.mp4"
 PORT = 5005
 
-# Iniciar mpv en pausa y fullscreen
-print("🕒 Cargando video en pausa...")
-mpv_proc = subprocess.Popen([
-    "mpv", "--fs", "--pause", "--no-terminal", VIDEO_PATH
-])
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind(("", PORT))
 
-print("👂 Esperando trigger del master...")
+print("👂 Esperando hora de reproducción...")
 
-while True:
-    data, addr = sock.recvfrom(1024)
-    if data == b"START":
-        print("🎬 Recibido trigger. Despausando...")
-        # Enviar tecla 'p' al proceso de mpv
-        os.system("xdotool search --class mpv key p")
-        break
+data, addr = sock.recvfrom(1024)
+start_str = data.decode().strip()
+print(f"🎯 Reproducción programada para: {start_str}")
+
+# Convertir a objeto datetime completo
+today = datetime.date.today()
+target_time = datetime.datetime.strptime(start_str, "%H:%M:%S").replace(
+    year=today.year, month=today.month, day=today.day
+)
+
+# Esperar hasta que llegue la hora
+while datetime.datetime.now() < target_time:
+    time.sleep(0.05)
+
+# Reproducir video en loop
+subprocess.run([
+    "mpv", "--fs", "--no-terminal", "--loop", VIDEO_PATH
+])
