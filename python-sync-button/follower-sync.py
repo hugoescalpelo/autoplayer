@@ -54,8 +54,8 @@ def launch_mpv():
     subprocess.Popen([
         "mpv", build_video_path(),
         "--fs", "--no-terminal", "--loop",
-        f"--input-ipc-server={SOCKET_PATH}",
-        "--pause"
+        f"--input-ipc-server={SOCKET_PATH}"##,
+        ##"--pause"
     ])
 
 def wait_for_socket():

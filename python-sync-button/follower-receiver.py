@@ -54,7 +54,10 @@ while True:
             send_mpv_command({"command": ["seek", -5, "relative"]})
 
         elif command == "LOCAL_ROTATE":
-            rotation_state = 180 if rotation_state == 0 else 0
+            if rotation_state == 0:
+                rotation_state = 180
+            elif rotation_state == 180:
+                rotation_state = 0
             print(f"🔄 Rotando a {rotation_state} grados")
             send_mpv_command({"command": ["set_property", "video-rotate", rotation_state]})
 
