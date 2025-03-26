@@ -26,10 +26,10 @@ def scan_video_library():
                 library[category] = []
             if variant not in library[category]:
                 library[category].append(variant)
-    print(f"Bilbioteca de Video {video_library}")
     return {cat: sorted(variants) for cat, variants in sorted(library.items())}
 
 video_library = scan_video_library()
+print(f"Bilbioteca de Video {video_library}")
 categories = list(video_library.keys())
 
 if not categories:
