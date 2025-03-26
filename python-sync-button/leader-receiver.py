@@ -47,17 +47,20 @@ while True:
         if command == "GLOBAL_TOGGLE_PLAY":
             send_mpv_command({"command": ["cycle", "pause"]})
 
-        elif command == "GLOBAL_NEXT_GROUP":
+        elif command == "GLOBAL_NEXT_5":
             send_mpv_command({"command": ["seek", 5, "relative"]})
 
-        elif command == "GLOBAL_PREV_GROUP":
+        elif command == "GLOBAL_PREV_5":
             send_mpv_command({"command": ["seek", -5, "relative"]})
 
-        elif command == "LOCAL_ROTATE":
-            if rotation_state == 0:
-                rotation_state = 180
-            elif rotation_state == 180:
-                rotation_state = 0
+        elif command == "GLOBAL_NEXT_CATEGORY":
+            send_local_command("GLOBAL_NEXT_CATEGORY")
+
+        elif command == "GLOBAL_PREV_CATEGORY":
+            send_local_command("GLOBAL_PREV_CATEGORY")
+
+        elif command == "LOCAL_ROTATE_180":
+            rotation_state = 180 if rotation_state == 0 else 0
             print(f"🔄 Rotando a {rotation_state} grados")
             send_mpv_command({"command": ["set_property", "video-rotate", rotation_state]})
 
@@ -75,8 +78,8 @@ while True:
                 print(f"🔎 Zoom out: {zoom_level}")
                 send_mpv_command({"command": ["set_property", "video-zoom", zoom_level]})
 
-        elif command == "LOCAL_SWITCH_VARIANT":
-            print("🅰️ Cambiando variante de video")
+        elif command == "LOCAL_SWITCH_AB":
+            print("🅰️ Cambiando variante A/B/C...")
             send_local_command("LOCAL_SWITCH_VARIANT")
 
     except Exception as e:
