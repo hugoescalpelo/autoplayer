@@ -53,3 +53,5 @@ Estas acciones **solo afectan la Raspberry Pi donde se presiona el botón**.
 💡 Este sistema permite manipular cada pantalla del video wall de forma independiente, pero también controlar la reproducción sincronizada desde cualquier unidad.
 
 ✨ Ideal para instalaciones interactivas de larga duración donde la interfaz debe ser simple pero poderosa.
+
+## Instrucciones, 
