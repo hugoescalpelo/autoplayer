@@ -3,38 +3,85 @@ from signal import pause
 import socket
 import time
 
-# Pines físicos
+# Pines GPIO
 BTN_LEFT = Button(17, pull_up=True, bounce_time=0.1)
 BTN_RIGHT = Button(22, pull_up=True, bounce_time=0.1)
 BTN_MENU = Button(27, pull_up=True, bounce_time=0.1)
 
-# Envío por UDP
-UDP_IP = "255.255.255.255"
+# Red
+UDP_IP_GLOBAL = "255.255.255.255"
 UDP_PORT = 5006
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-def send_global(command):
-    print(f"🌐 Enviando comando global: {command}")
-    sock.sendto(command.encode(), (UDP_IP, UDP_PORT))
+MODES = ["REPRO", "ROTAR", "ZOOM", "AB"]
+current_mode = [0]  # usamos lista para mantener referencia mutable
 
-def execute_local(command):
-    print(f"💻 Ejecutando comando local: {command}")
+def broadcast(command):
+    print(f"🌍 [GLOBAL] {command}")
+    sock.sendto(command.encode(), (UDP_IP_GLOBAL, UDP_PORT))
+
+def local(command):
+    print(f"📍 [LOCAL] {command}")
     sock.sendto(command.encode(), ("127.0.0.1", UDP_PORT))
 
-def handle_button(button, short_cmd, long_cmd):
-    pressed_time = time.time()
-    while button.is_pressed:
+def cycle_mode():
+    current_mode[0] = (current_mode[0] + 1) % len(MODES)
+    print(f"🔁 Modo cambiado a: {MODES[current_mode[0]]}")
+
+def handle_menu_press():
+    start = time.time()
+    while BTN_MENU.is_pressed:
         time.sleep(0.01)
-    duration = time.time() - pressed_time
+    duration = time.time() - start
+
     if duration < 0.5:
-        (send_global if "GLOBAL" in short_cmd else execute_local)(short_cmd)
+        if MODES[current_mode[0]] == "REPRO":
+            broadcast("GLOBAL_TOGGLE_PLAY")
     else:
-        (send_global if "GLOBAL" in long_cmd else execute_local)(long_cmd)
+        cycle_mode()
 
-BTN_LEFT.when_pressed = lambda: handle_button(BTN_LEFT, "GLOBAL_PREV_GROUP", "LOCAL_REWIND")
-BTN_RIGHT.when_pressed = lambda: handle_button(BTN_RIGHT, "GLOBAL_NEXT_GROUP", "LOCAL_FAST_FORWARD")
-BTN_MENU.when_pressed = lambda: handle_button(BTN_MENU, "GLOBAL_TOGGLE_PLAY", "LOCAL_CYCLE_MODE")
+def handle_left_press():
+    mode = MODES[current_mode[0]]
+    start = time.time()
+    while BTN_LEFT.is_pressed:
+        time.sleep(0.01)
+    duration = time.time() - start
 
-print("🎛️ Controlador de botones listo.")
+    if mode == "REPRO":
+        if duration < 0.5:
+            broadcast("GLOBAL_PREV_5")
+        else:
+            broadcast("GLOBAL_PREV_CATEGORY")
+    elif mode == "ROTAR":
+        local("LOCAL_ROTATE_180")
+    elif mode == "ZOOM":
+        local("LOCAL_ZOOM_OUT")
+    elif mode == "AB":
+        local("LOCAL_SWITCH_AB")
+
+def handle_right_press():
+    mode = MODES[current_mode[0]]
+    start = time.time()
+    while BTN_RIGHT.is_pressed:
+        time.sleep(0.01)
+    duration = time.time() - start
+
+    if mode == "REPRO":
+        if duration < 0.5:
+            broadcast("GLOBAL_NEXT_5")
+        else:
+            broadcast("GLOBAL_NEXT_CATEGORY")
+    elif mode == "ROTAR":
+        local("LOCAL_ROTATE_180")
+    elif mode == "ZOOM":
+        local("LOCAL_ZOOM_IN")
+    elif mode == "AB":
+        local("LOCAL_SWITCH_AB")
+
+BTN_MENU.when_pressed = handle_menu_press
+BTN_LEFT.when_pressed = handle_left_press
+BTN_RIGHT.when_pressed = handle_right_press
+
+print("🎛️ Botonera activa — modo inicial: REPRO")
 pause()
