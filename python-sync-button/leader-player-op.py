@@ -6,7 +6,7 @@ import os
 import glob
 import re
 
-VIDEO_DIR = "/home/pi/Videos"
+VIDEO_DIR = "/home/pione/Videos"
 SOCKET_PATH = "/tmp/mpvsocket"
 SYNC_PORT = 5005
 
