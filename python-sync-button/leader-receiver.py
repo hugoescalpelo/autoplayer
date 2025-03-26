@@ -1,16 +1,15 @@
 import socket
 import json
+import socket as usocket
 import os
 import time
 
 SOCKET_PATH = "/tmp/mpvsocket"
 UDP_PORT = 5006
+CONTROL_PORT = 5007  # Para enviar a leader-sync
 
-zoom_level = [1.0]
-video_set = {
-    "current_category": "DEFAULT",
-    "ab": "A"
-}
+rotation_state = 0
+zoom_level = 0.0  # MPV default zoom is 0.0
 
 def wait_for_socket():
     while not os.path.exists(SOCKET_PATH):
@@ -19,12 +18,19 @@ def wait_for_socket():
 
 def send_mpv_command(command):
     try:
-        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client = usocket.socket(usocket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(SOCKET_PATH)
         client.send(json.dumps(command).encode() + b'\n')
         client.close()
     except Exception as e:
         print(f"⚠️ Error enviando comando a mpv: {e}")
+
+def send_local_command(command_str):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(command_str.encode(), ("127.0.0.1", CONTROL_PORT))
+    except Exception as e:
+        print(f"⚠️ Error enviando comando local: {e}")
 
 wait_for_socket()
 
@@ -36,44 +42,33 @@ while True:
     try:
         data, addr = sock.recvfrom(1024)
         command = data.decode().strip()
-        print(f"📨 Comando recibido: {command}")
+        print(f"🌐 Comando recibido: {command}")
 
         if command == "GLOBAL_TOGGLE_PLAY":
             send_mpv_command({"command": ["cycle", "pause"]})
 
-        elif command == "GLOBAL_NEXT_5":
+        elif command == "GLOBAL_NEXT_GROUP":
             send_mpv_command({"command": ["seek", 5, "relative"]})
 
-        elif command == "GLOBAL_PREV_5":
+        elif command == "GLOBAL_PREV_GROUP":
             send_mpv_command({"command": ["seek", -5, "relative"]})
 
-        elif command == "GLOBAL_NEXT_CATEGORY":
-            send_mpv_command({"command": ["set_property", "time-pos", 0]})
-            # Aquí podrías luego enlazar cambio real de carpeta
-
-        elif command == "GLOBAL_PREV_CATEGORY":
-            send_mpv_command({"command": ["set_property", "time-pos", 0]})
-            # Igual que arriba
-
-        elif command == "LOCAL_ROTATE_180":
-            send_mpv_command({"command": ["add", "video-rotate", 180]})
+        elif command == "LOCAL_ROTATE":
+            rotation_state = 0 if rotation_state == 180 else 180
+            send_mpv_command({"command": ["set_property", "video-rotate", rotation_state]})
 
         elif command == "LOCAL_ZOOM_IN":
-            if zoom_level[0] < 2.0:
-                zoom_level[0] += 0.05
-                send_mpv_command({"command": ["set_property", "video-zoom", zoom_level[0]]})
-                print(f"🔍 Zoom in: {int(zoom_level[0]*100)}%")
+            if zoom_level < 1.0:
+                zoom_level += 0.05
+                send_mpv_command({"command": ["set_property", "video-zoom", round(zoom_level, 2)]})
 
         elif command == "LOCAL_ZOOM_OUT":
-            if zoom_level[0] > 0.1:
-                zoom_level[0] -= 0.05
-                send_mpv_command({"command": ["set_property", "video-zoom", zoom_level[0]]})
-                print(f"🔎 Zoom out: {int(zoom_level[0]*100)}%")
+            if zoom_level > -0.9:
+                zoom_level -= 0.05
+                send_mpv_command({"command": ["set_property", "video-zoom", round(zoom_level, 2)]})
 
-        elif command == "LOCAL_SWITCH_AB":
-            video_set["ab"] = "B" if video_set["ab"] == "A" else "A"
-            print(f"🔁 Cambiando a video {video_set['ab']}")
-            # Aquí podrías integrar cambio real de archivo en leader-sync.py
+        elif command == "LOCAL_SWITCH_VARIANT":
+            send_local_command("LOCAL_SWITCH_VARIANT")
 
     except Exception as e:
         print(f"❌ Error en receptor UDP: {e}")

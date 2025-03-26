@@ -38,6 +38,7 @@ if not categories:
 
 category_index = [0]
 variant_index = [0]
+pause_state = False
 
 def current_category():
     return categories[category_index[0]]
@@ -73,11 +74,35 @@ def get_time_pos():
         print(f"⚠️ Error obteniendo tiempo: {e}")
         return 0
 
+def get_pause_state():
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(SOCKET_PATH)
+        client.send(json.dumps({"command": ["get_property", "pause"]}).encode() + b'\n')
+        response = client.recv(1024).decode()
+        client.close()
+        return json.loads(response).get("data", False)
+    except:
+        return False
+
 def reload_video():
+    global pause_state
+    pause_state = get_pause_state()
     os.system("pkill mpv")
     time.sleep(1)
     launch_mpv()
     wait_for_socket()
+    if pause_state:
+        send_mpv_command({"command": ["set_property", "pause", True]})
+
+def send_mpv_command(command):
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(SOCKET_PATH)
+        client.send(json.dumps(command).encode() + b'\n')
+        client.close()
+    except:
+        pass
 
 def switch_variant():
     variants = video_library[current_category()]
@@ -112,15 +137,14 @@ print("📡 Leader emitiendo sincronización cada 10 segundos y escuchando contr
 
 last_sync = time.time()
 
-# Bucle principal
 while True:
-    # Enviar tiempo por broadcast cada 10s
+    # Sincronizar cada 10 segundos
     if time.time() - last_sync >= 10:
         current_time = get_time_pos()
         broadcast_sock.sendto(str(current_time).encode(), (BROADCAST_IP, SYNC_PORT))
         last_sync = time.time()
 
-    # Recibir control local
+    # Recibir comandos
     control_sock.settimeout(0.1)
     try:
         data, _ = control_sock.recvfrom(1024)

@@ -37,6 +37,7 @@ if not categories:
 
 category_index = [0]
 variant_index = [0]
+pause_state = False
 
 def current_category():
     return categories[category_index[0]]
@@ -70,11 +71,26 @@ def send_mpv_command(command):
     except Exception as e:
         print(f"⚠️ Error enviando a mpv: {e}")
 
+def get_pause_state():
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(SOCKET_PATH)
+        client.send(json.dumps({"command": ["get_property", "pause"]}).encode() + b'\n')
+        response = client.recv(1024).decode()
+        client.close()
+        return json.loads(response).get("data", False)
+    except:
+        return False
+
 def reload_video():
+    global pause_state
+    pause_state = get_pause_state()
     os.system("pkill mpv")
     time.sleep(1)
     launch_mpv()
     wait_for_socket()
+    if pause_state:
+        send_mpv_command({"command": ["set_property", "pause", True]})
 
 def switch_variant():
     variants = video_library[current_category()]
@@ -94,7 +110,7 @@ def prev_category():
     print(f"⬅️ Categoría anterior: {current_category()}")
     reload_video()
 
-# Iniciar
+# Lanzar primer video en pausa
 launch_mpv()
 wait_for_socket()
 
@@ -112,7 +128,6 @@ print("📡 Esperando sincronización del leader...")
 
 # Loop principal
 while True:
-    # Sincronización desde leader
     sync_sock.settimeout(1)
     try:
         data, addr = sync_sock.recvfrom(1024)
@@ -122,9 +137,10 @@ while True:
 
         now = time.time()
         if now - last_sync_time >= 10:
-            time_pos = float(data.decode().strip())
-            send_mpv_command({"command": ["set_property", "time-pos", time_pos]})
-            send_mpv_command({"command": ["set_property", "pause", False]})
+            if not get_pause_state():  # no despausar si el usuario pausó
+                time_pos = float(data.decode().strip())
+                send_mpv_command({"command": ["set_property", "time-pos", time_pos]})
+                send_mpv_command({"command": ["set_property", "pause", False]})
             last_sync_time = now
     except socket.timeout:
         pass
