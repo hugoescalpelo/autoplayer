@@ -4,6 +4,8 @@ import socket
 import time
 import json
 import os
+import glob
+import re
 from enum import IntEnum
 
 # GPIO
@@ -11,14 +13,8 @@ BTN_LEFT = Button(17, pull_up=True, bounce_time=0.05)
 BTN_RIGHT = Button(22, pull_up=True, bounce_time=0.05)
 BTN_MENU = Button(27, pull_up=True, bounce_time=0.05)
 
-# Red
-UDP_IP_GLOBAL = "255.255.255.255"
-UDP_PORT = 5006
-LOCAL_SOCKET_PATH = "/tmp/mpvsocket"
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+SOCKET_PATH = "/tmp/mpvsocket"
+VIDEO_DIR = "/home/pitwo/Videos"
 
 # Modos
 class Mode(IntEnum):
@@ -30,90 +26,142 @@ class Mode(IntEnum):
 current_mode = [Mode.REPRO]
 zoom_level = [0.0]
 
-# MPV socket
-def send_local_mpv(command):
+# Construir playlist
+def build_playlist():
+    pattern = re.compile(r"^(.*?)([A-Z])\.mp4$")
+    files = sorted(glob.glob(os.path.join(VIDEO_DIR, "*.mp4")))
+    playlist = []
+    for f in files:
+        name = os.path.basename(f)
+        match = pattern.match(name)
+        if match:
+            category, variant = match.groups()
+            playlist.append((category, variant, f))
+    return playlist
+
+playlist = build_playlist()
+if not playlist:
+    print("No se encontraron videos.")
+    exit(1)
+
+category_list = sorted(set(cat for cat, _, _ in playlist))
+category_index = [0]
+variant_index = [0]
+
+# Obtener índice actual
+def get_current_index():
+    cat = category_list[category_index[0]]
+    variants = [v for c, v, _ in playlist if c == cat]
+    var = variants[variant_index[0] % len(variants)]
+    for i, (c, v, _) in enumerate(playlist):
+        if c == cat and v == var:
+            return i
+    return 0
+
+# Enviar comando a mpv
+def send_mpv(command):
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.connect(LOCAL_SOCKET_PATH)
+            client.connect(SOCKET_PATH)
             client.send(json.dumps(command).encode() + b'\n')
     except:
-        print("⚠️")
-
-# UDP
-def broadcast(command):
-    try:
-        sock.sendto(command.encode(), (UDP_IP_GLOBAL, UDP_PORT))
-    except:
-        print("❌")
+        pass
 
 # Acciones
-def local_rotate_180():
-    send_local_mpv({"command": ["cycle-values", "video-rotate", "0", "180"]})
+def toggle_pause():
+    send_mpv({"command": ["cycle", "pause"]})
 
-def local_zoom_in():
+def seek(offset):
+    send_mpv({"command": ["add", "time-pos", offset]})
+
+def rotate_180():
+    send_mpv({"command": ["cycle-values", "video-rotate", "0", "180"]})
+
+def zoom_in():
     if zoom_level[0] < 1.0:
         zoom_level[0] += 0.05
-        zoom_level[0] = round(zoom_level[0], 2)
-        send_local_mpv({"command": ["set_property", "video-zoom", zoom_level[0]]})
+        send_mpv({"command": ["set_property", "video-zoom", round(zoom_level[0], 2)]})
 
-def local_zoom_out():
+def zoom_out():
     if zoom_level[0] > -1.0:
         zoom_level[0] -= 0.05
-        zoom_level[0] = round(zoom_level[0], 2)
-        send_local_mpv({"command": ["set_property", "video-zoom", zoom_level[0]]})
+        send_mpv({"command": ["set_property", "video-zoom", round(zoom_level[0], 2)]})
 
-def local_switch_ab():
-    sock.sendto("LOCAL_SWITCH_AB".encode(), ("127.0.0.1", UDP_PORT))
+def switch_ab():
+    variant_index[0] += 1
+    jump_to_current()
 
+def next_category():
+    category_index[0] = (category_index[0] + 1) % len(category_list)
+    variant_index[0] = 0
+    jump_to_current()
+
+def prev_category():
+    category_index[0] = (category_index[0] - 1) % len(category_list)
+    variant_index[0] = 0
+    jump_to_current()
+
+def jump_to_current():
+    index = get_current_index()
+    send_mpv({"command": ["playlist-play-index", index]})
+    print(f"Video {index}: {playlist[index][0]}{playlist[index][1]}")
+
+# Cambio de modo
 def cycle_mode():
     current_mode[0] = Mode((current_mode[0] + 1) % len(Mode))
-    print(f"🔁 {current_mode[0].name[0]}")
+    print(f"Modo: {current_mode[0].name}")
 
+# Duración del botón
 def hold_duration(button):
     start = time.monotonic()
     while button.is_pressed:
         time.sleep(0.01)
     return time.monotonic() - start
 
+# Botón menú
 def handle_menu():
     duration = hold_duration(BTN_MENU)
-    if duration < 0.5:
-        if current_mode[0] == Mode.REPRO:
-            broadcast("GLOBAL_TOGGLE_PLAY")
-            print("⏯️")
-    else:
+    if duration < 0.5 and current_mode[0] == Mode.REPRO:
+        toggle_pause()
+    elif duration >= 0.5:
         cycle_mode()
 
+# Botón izquierdo
 def handle_left():
     duration = hold_duration(BTN_LEFT)
     mode = current_mode[0]
     if mode == Mode.REPRO:
-        broadcast("⏪" if duration < 0.5 else "⬅️")
-        broadcast("GLOBAL_PREV_5" if duration < 0.5 else "GLOBAL_PREV_CATEGORY")
+        if duration < 0.5:
+            seek(-5)
+        else:
+            prev_category()
     elif mode == Mode.ROTAR:
-        local_rotate_180()
+        rotate_180()
     elif mode == Mode.ZOOM:
-        local_zoom_out()
+        zoom_out()
     elif mode == Mode.AB:
-        local_switch_ab()
+        switch_ab()
 
+# Botón derecho
 def handle_right():
     duration = hold_duration(BTN_RIGHT)
     mode = current_mode[0]
     if mode == Mode.REPRO:
-        broadcast("⏩" if duration < 0.5 else "➡️")
-        broadcast("GLOBAL_NEXT_5" if duration < 0.5 else "GLOBAL_NEXT_CATEGORY")
+        if duration < 0.5:
+            seek(5)
+        else:
+            next_category()
     elif mode == Mode.ROTAR:
-        local_rotate_180()
+        rotate_180()
     elif mode == Mode.ZOOM:
-        local_zoom_in()
+        zoom_in()
     elif mode == Mode.AB:
-        local_switch_ab()
+        switch_ab()
 
-# Asignación
+# Asignar acciones
 BTN_MENU.when_pressed = handle_menu
 BTN_LEFT.when_pressed = handle_left
 BTN_RIGHT.when_pressed = handle_right
 
-print("🎛️")  # Señal mínima de arranque
+print("Botonera activa — modo inicial: REPRO")
 pause()
