@@ -67,4 +67,14 @@ while True:
         elif command == "LOCAL_ZOOM_OUT":
             if zoom_level[0] > 0.1:
                 zoom_level[0] -= 0.05
-                send_mpv_command({"command": ["set_property", "video-zoom",_
+                send_mpv_command({"command": ["set_property", "video-zoom", zoom_level[0]]})
+                print(f"🔎 Zoom out: {int(zoom_level[0]*100)}%")
+
+        elif command == "LOCAL_SWITCH_AB":
+            video_set["ab"] = "B" if video_set["ab"] == "A" else "A"
+            print(f"🔁 Cambiando a video {video_set['ab']}")
+            # Aquí podrías integrar cambio real de archivo en leader-sync.py
+
+    except Exception as e:
+        print(f"❌ Error en receptor UDP: {e}")
+        time.sleep(1)
