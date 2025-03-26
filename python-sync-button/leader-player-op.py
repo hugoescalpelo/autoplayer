@@ -5,7 +5,7 @@ import json
 import os
 import glob
 
-VIDEO_DIR = "/home/pi/Videos"
+VIDEO_DIR = "/home/pione/Videos"
 SOCKET_PATH = "/tmp/mpvsocket"
 BROADCAST_IP = "255.255.255.255"
 SYNC_PORT = 5005

@@ -14,7 +14,7 @@ BTN_RIGHT = Button(22, pull_up=True, bounce_time=0.05)
 BTN_MENU = Button(27, pull_up=True, bounce_time=0.05)
 
 SOCKET_PATH = "/tmp/mpvsocket"
-VIDEO_DIR = "/home/pi/Videos"
+VIDEO_DIR = "/home/pione/Videos"
 
 # Modos
 class Mode(IntEnum):
