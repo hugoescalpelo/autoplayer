@@ -6,7 +6,7 @@ import time
 
 SOCKET_PATH = "/tmp/mpvsocket"
 UDP_PORT = 5006
-CONTROL_PORT = 5007  # Para enviar a leader-sync
+CONTROL_PORT = 5007
 
 rotation_state = 0
 zoom_level = 0.0  # MPV default zoom is 0.0
@@ -54,20 +54,26 @@ while True:
             send_mpv_command({"command": ["seek", -5, "relative"]})
 
         elif command == "LOCAL_ROTATE":
-            rotation_state = 0 if rotation_state == 180 else 180
+            rotation_state = 180 if rotation_state == 0 else 0
+            print(f"🔄 Rotando a {rotation_state} grados")
             send_mpv_command({"command": ["set_property", "video-rotate", rotation_state]})
 
         elif command == "LOCAL_ZOOM_IN":
             if zoom_level < 1.0:
                 zoom_level += 0.05
-                send_mpv_command({"command": ["set_property", "video-zoom", round(zoom_level, 2)]})
+                zoom_level = round(zoom_level, 2)
+                print(f"🔍 Zoom in: {zoom_level}")
+                send_mpv_command({"command": ["set_property", "video-zoom", zoom_level]})
 
         elif command == "LOCAL_ZOOM_OUT":
             if zoom_level > -0.9:
                 zoom_level -= 0.05
-                send_mpv_command({"command": ["set_property", "video-zoom", round(zoom_level, 2)]})
+                zoom_level = round(zoom_level, 2)
+                print(f"🔎 Zoom out: {zoom_level}")
+                send_mpv_command({"command": ["set_property", "video-zoom", zoom_level]})
 
         elif command == "LOCAL_SWITCH_VARIANT":
+            print("🅰️ Cambiando variante de video")
             send_local_command("LOCAL_SWITCH_VARIANT")
 
     except Exception as e:

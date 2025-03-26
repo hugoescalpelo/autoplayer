@@ -38,6 +38,7 @@ if not categories:
 category_index = [0]
 variant_index = [0]
 pause_state = False
+started = False  # 🆕 Para saber si ya iniciamos el video
 
 def current_category():
     return categories[category_index[0]]
@@ -82,13 +83,25 @@ def get_pause_state():
     except:
         return False
 
+def get_time_pos():
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(SOCKET_PATH)
+        client.send(json.dumps({"command": ["get_property", "time-pos"]}).encode() + b'\n')
+        response = client.recv(1024).decode()
+        client.close()
+        return json.loads(response).get("data", 0)
+    except:
+        return 0
+
 def reload_video():
-    global pause_state
+    global pause_state, started
     pause_state = get_pause_state()
     os.system("pkill mpv")
     time.sleep(1)
     launch_mpv()
     wait_for_socket()
+    started = True
     if pause_state:
         send_mpv_command({"command": ["set_property", "pause", True]})
 
@@ -137,11 +150,20 @@ while True:
 
         now = time.time()
         if now - last_sync_time >= 10:
-            if not get_pause_state():  # no despausar si el usuario pausó
-                time_pos = float(data.decode().strip())
+            time_pos = float(data.decode().strip())
+            current_pos = get_time_pos()
+            diff = round(time_pos - current_pos, 3)
+
+            print(f"🎯 Ajustando posición: líder={time_pos:.2f}s | local={current_pos:.2f}s | desfase={diff:.3f}s")
+
+            if not get_pause_state():
                 send_mpv_command({"command": ["set_property", "time-pos", time_pos]})
-                send_mpv_command({"command": ["set_property", "pause", False]})
+                if not started:
+                    send_mpv_command({"command": ["set_property", "pause", False]})
+                    started = True
+
             last_sync_time = now
+
     except socket.timeout:
         pass
 
