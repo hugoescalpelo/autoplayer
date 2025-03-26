@@ -4,7 +4,7 @@ import subprocess
 import json
 import os
 
-VIDEO_PATH = "/home/user/Videos/VideoB.mp4"
+VIDEO_PATH = "/home/pitwo/Videos/VideoB.mp4"
 PORT = 5005
 SOCKET_PATH = "/tmp/mpvsocket"
 
