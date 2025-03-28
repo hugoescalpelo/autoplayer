@@ -82,10 +82,9 @@ def show_osd(title, button):
 +-----------------------------------+
 
 😎😎😎 Funciones del modo 😎😎😎
-  ⏮️ : {get_action_description(mode, 'left')}
-  ⏭️ : {get_action_description(mode, 'right')}
-  ⏯️ : {get_action_description(mode, 'menu')}
-
+  -> : {get_action_description(mode, 'left')}
+  <- : {get_action_description(mode, 'right')}
+  
 😀😀😀 Modos disponibles 😀😀😀
   REPRO  : reproducción y navegación
   ROTAR  : rotación de imagen
