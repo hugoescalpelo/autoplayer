@@ -77,16 +77,16 @@ def show_osd(title, button):
     mode = current_mode[0].name
     text = f"""
 +-----------------------------------+
-| Modo actual: {mode:<12}           |
-| Botón presionado: {button:<8}     |
+| Modo actual: {mode:<12}         |
+| Botón presionado: {button:<8}        |
 +-----------------------------------+
 
 😎😎😎 Funciones del modo 😎😎😎
-  ← : {get_action_description(mode, 'left')}
-  → : {get_action_description(mode, 'right')}
-  ⏯ : {get_action_description(mode, 'menu')}
+  ⏮️ : {get_action_description(mode, 'left')}
+  ⏭️ : {get_action_description(mode, 'right')}
+  ⏯️ : {get_action_description(mode, 'menu')}
 
-🤩🤩🤩 Modos disponibles 🤩🤩
+😀😀😀 Modos disponibles 😀😀😀
   REPRO  : reproducción y navegación
   ROTAR  : rotación de imagen
   ZOOM   : acercar/alejar imagen
