@@ -58,35 +58,39 @@ def get_current_index():
             return i
     return 0
 
+def is_socket_available():
+    return os.path.exists(SOCKET_PATH)
+
 def send_mpv(command):
+    if not is_socket_available():
+        return
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.connect(SOCKET_PATH)
             client.send(json.dumps(command).encode() + b'\n')
-    except:
-        pass
+    except (BrokenPipeError, ConnectionRefusedError):
+        print("Socket roto o inaccesible.")
 
 def show_osd(title, button):
+    if not is_socket_available():
+        return
     mode = current_mode[0].name
     text = f"""
-+----------------------------+
-| Modo actual: {mode:<11}       |
-| Botón: {button:<10}           |
-+----------------------------+
++-----------------------------------+
+| Modo actual: {mode:<12}           |
+| Botón presionado: {button:<8}     |
++-----------------------------------+
 
-== Funciones del modo actual ==
-  IZQUIERDA  : {get_action_description(mode, 'left')}
-  DERECHA    : {get_action_description(mode, 'right')}
-  MENÚ       : {get_action_description(mode, 'menu')}
+😎😎😎 Funciones del modo 😎😎😎
+  ← : {get_action_description(mode, 'left')}
+  → : {get_action_description(mode, 'right')}
+  ⏯ : {get_action_description(mode, 'menu')}
 
-== Cambiar modo ==
-  Mantén presionado MENÚ para rotar entre modos.
-
-== Modos disponibles ==
-  REPRO      : reproducción y navegación
-  ROTAR      : rotación del video
-  ZOOM       : acercar y alejar imagen
-  AB         : cambiar versión del video
+🤩🤩🤩 Modos disponibles 🤩🤩
+  REPRO  : reproducción y navegación
+  ROTAR  : rotación de imagen
+  ZOOM   : acercar/alejar imagen
+  AB     : cambiar variante A/B/C...
 """
     send_mpv({"command": ["show-text", text, 3000]})
 
@@ -97,7 +101,7 @@ def get_action_description(mode, button):
         elif button == "right":
             return "→5s / categoría siguiente"
         elif button == "menu":
-            return "Pausa / reanudar"
+            return "Pausa / Reanudar"
     elif mode == "ROTAR":
         return "Rotar 180°"
     elif mode == "ZOOM":
@@ -143,7 +147,7 @@ def prev_category():
 def jump_to_current():
     idx = get_current_index()
     send_mpv({"command": ["playlist-play-index", idx]})
-    send_mpv({"command": ["show-text", f"Reproduciendo: {playlist[idx][0]}{playlist[idx][1]}", 1000]})
+    send_mpv({"command": ["show-text", f"{playlist[idx][0]}{playlist[idx][1]}", 1000]})
 
 def cycle_mode():
     current_mode[0] = Mode((current_mode[0] + 1) % len(Mode))
@@ -156,7 +160,7 @@ def hold_duration(button):
 
 def handle_menu():
     duration = hold_duration(BTN_MENU)
-    show_osd("Modo", "MENÚ")
+    show_osd("Modo", "MENU")
     if duration < 0.5 and current_mode[0] == Mode.REPRO:
         toggle_pause()
     elif duration >= 0.5:
@@ -202,7 +206,7 @@ def launch_mpv():
         f"mpv {' '.join(files)} "
         f"--fs --loop-playlist --no-config --no-osd-bar --osd-level=1 "
         f"--vo=gpu --hwdec=drm "
-        f"--osd-font-size=18 --osd-font='Consolas' "
+        f"--osd-font-size=26 --osd-font='Liberation Mono' "
         f"--input-ipc-server={SOCKET_PATH} &"
     )
 
