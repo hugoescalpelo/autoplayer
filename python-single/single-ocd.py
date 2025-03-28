@@ -181,7 +181,13 @@ def launch_mpv():
     files = [f for _, _, f in playlist]
     os.system("pkill mpv")
     time.sleep(1)
-    os.system(f"mpv {' '.join(files)} --fs --loop-playlist --no-config --no-osd-bar --osd-level=1 --vo=gpu --hwdec=drm --input-ipc-server={SOCKET_PATH} &")
+    os.system(
+        f"mpv {' '.join(files)} "
+        f"--fs --loop-playlist --no-config --no-osd-bar --osd-level=1 "
+        f"--vo=gpu --hwdec=drm "
+        f"--osd-font-size=18 --osd-font='Verdana' "
+        f"--input-ipc-server={SOCKET_PATH} &"
+    )
 
 BTN_MENU.when_pressed = handle_menu
 BTN_LEFT.when_pressed = handle_left
