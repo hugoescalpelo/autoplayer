@@ -121,7 +121,7 @@ def convert_to_valid_format(src, dst):
 
 def sync_and_convert_videos():
     usb_path = find_usb_origins()
-    print(s"Path Memoria {usb_path}")
+    print(f"Path Memoria {usb_path}")
     if not usb_path:
         send_osd("No se detectó USB con carpeta /origins.")
         return False
