@@ -70,11 +70,20 @@ AB    :  Cambiar variante
 
 # --- DETECCIÓN Y CONVERSIÓN ---
 def find_usb_origins():
-    for mount_point in USB_MOUNT_ROOT.iterdir():
-        if mount_point.is_dir():
-            origins_path = mount_point / USB_FOLDER_NAME
-            if origins_path.exists() and origins_path.is_dir():
-                return origins_path
+    USER = os.getenv("USER") or "pi"
+    base_path = Path("/media") / USER
+
+    if not base_path.exists():
+        print(f"No existe la carpeta esperada: {base_path}")
+        return None
+
+    for device in base_path.iterdir():
+        origins_path = device / "origins"
+        if origins_path.exists() and origins_path.is_dir():
+            print(f"Origen detectado: {origins_path}")
+            return origins_path
+
+    print("No se encontró carpeta 'origins' en ninguna USB montada.")
     return None
 
 def is_valid_video(path):
