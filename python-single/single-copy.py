@@ -197,7 +197,7 @@ def launch_mpv():
     generate_playlist()
     subprocess.Popen([
         "mpv",
-        "--fs", "--loop-playlist", "--no-config", "--no-osd-bar", "--osd-level=1",
+        "--fs", "--loop-file", "--no-config", "--no-osd-bar", "--osd-level=1",
         f"--playlist={PLAYLIST_FILE}",
         f"--input-ipc-server={SOCKET_PATH}",
         "--osd-font='Liberation Mono'",
