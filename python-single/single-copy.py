@@ -33,7 +33,6 @@ current_mode = [Mode.REPRO]
 zoom_level = [0.0]
 
 # Mostrar texto en mpv
-
 def send_mpv(command):
     if not os.path.exists(SOCKET_PATH):
         return
@@ -55,7 +54,7 @@ def show_osd(title, button):
 😎😎😎 Funciones del modo 😎😎😎
   -> : {get_action_description(mode, 'right')}
   <- : {get_action_description(mode, 'left')}
-
+  
 😀😀😀 Modos disponibles 😀😀😀
   REPRO  : reproducción y navegación
   ROTAR  : rotación de imagen
@@ -169,14 +168,10 @@ def sync_videos():
     for file in VIDEO_DIR.glob("*.mov"):
         file.unlink()
 
-    files = list(usb_path.glob("*.mp4")) + list(usb_path.glob("*.mov"))
-    total = len(files)
-
-    for i, file in enumerate(files):
+    for file in usb_path.glob("*.mp4"):
         shutil.copy(file, VIDEO_DIR)
-        progress = f"Copiando archivo {i+1}/{total}: {file.name}"
-        send_mpv({"command": ["show-text", progress, 1500]})
-
+    for file in usb_path.glob("*.mov"):
+        shutil.copy(file, VIDEO_DIR)
     return True
 
 def generate_playlist():
@@ -184,13 +179,14 @@ def generate_playlist():
         for video in sorted(VIDEO_DIR.glob("*.mp4")) + sorted(VIDEO_DIR.glob("*.mov")):
             f.write(str(video) + "\n")
 
+# Lanzar mpv
 def launch_mpv():
     os.system("pkill mpv")
     time.sleep(1)
     generate_playlist()
     subprocess.Popen([
         "mpv",
-        "--fs", "--loop-playlist", "--no-config", "--no-osd-bar", "--osd-level=1",
+        "--fs", "--loop-playlist", "--pause", "--no-config", "--no-osd-bar", "--osd-level=1",
         f"--playlist={PLAYLIST_FILE}",
         f"--input-ipc-server={SOCKET_PATH}",
         "--osd-font='Liberation Mono'",
