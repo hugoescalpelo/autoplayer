@@ -83,8 +83,9 @@ def update_playlist():
 
 def play_current():
     idx = current_index[0] % len(playlist)
-    send_mpv({"command": ["playlist-play-index", idx]})
+    send_mpv({"command": ["loadfile", str(playlist[idx]), "replace"]})
     send_mpv({"command": ["show-text", playlist[idx].name, 1000]})
+    send_mpv({"command": ["set_property", "loop-file", True]})
 
 def toggle_pause():
     send_mpv({"command": ["cycle", "pause"]})
@@ -203,8 +204,8 @@ def launch_mpv(source):
     if source == "playlist":
         generate_playlist()
         cmd = [
-            "mpv", "--fs", "--loop-playlist", "--no-config", "--no-osd-bar", "--osd-level=1",
-            f"--playlist={PLAYLIST_FILE}", f"--input-ipc-server={SOCKET_PATH}",
+            "mpv", str(playlist[0]), "--fs", "--loop-file", "--no-config", "--no-osd-bar", "--osd-level=1",
+            f"--input-ipc-server={SOCKET_PATH}",
             "--osd-font='Liberation Mono'", "--osd-font-size=26"
         ]
     else:
