@@ -54,7 +54,7 @@ def show_osd(title, button):
 😎😎😎 Funciones del modo 😎😎😎
   -> : {get_action_description(mode, 'right')}
   <- : {get_action_description(mode, 'left')}
-  
+
 😀😀😀 Modos disponibles 😀😀😀
   REPRO  : reproducción y navegación
   ROTAR  : rotación de imagen
@@ -64,7 +64,7 @@ def show_osd(title, button):
 
 def get_action_description(mode, button):
     if mode == "REPRO":
-        return "←5s / video anterior" if button == "left" else "→5s / siguiente video"
+        return "←5s / video anterior (mantén presionado)" if button == "left" else "→5s / siguiente video (mantén presionado)"
     elif mode == "ROTAR":
         return "Rotar 180°"
     elif mode == "ZOOM":
@@ -77,7 +77,8 @@ current_index = [0]
 
 def update_playlist():
     global playlist
-    playlist = sorted(VIDEO_DIR.glob("*.mp4")) + sorted(VIDEO_DIR.glob("*.mov"))
+    playlist = sorted(VIDEO_DIR.glob("*.mp4")) + sorted(VIDEO_DIR.glob("*.MP4")) + \
+               sorted(VIDEO_DIR.glob("*.mov")) + sorted(VIDEO_DIR.glob("*.MOV"))
 
 def play_current():
     idx = current_index[0] % len(playlist)
@@ -161,22 +162,32 @@ def find_usb_origins():
 def sync_videos():
     usb_path = find_usb_origins()
     if not usb_path:
+        print("No se encontró memoria USB con carpeta origins.")
         return False
 
+    print("Sincronizando videos desde USB...")
     for file in VIDEO_DIR.glob("*.mp4"):
+        file.unlink()
+    for file in VIDEO_DIR.glob("*.MP4"):
         file.unlink()
     for file in VIDEO_DIR.glob("*.mov"):
         file.unlink()
+    for file in VIDEO_DIR.glob("*.MOV"):
+        file.unlink()
 
-    for file in usb_path.glob("*.mp4"):
+    all_videos = list(usb_path.glob("*.mp4")) + list(usb_path.glob("*.MP4")) + \
+                 list(usb_path.glob("*.mov")) + list(usb_path.glob("*.MOV"))
+
+    for file in all_videos:
+        print(f"Copiando: {file.name}")
         shutil.copy(file, VIDEO_DIR)
-    for file in usb_path.glob("*.mov"):
-        shutil.copy(file, VIDEO_DIR)
+
     return True
 
 def generate_playlist():
     with open(PLAYLIST_FILE, "w") as f:
-        for video in sorted(VIDEO_DIR.glob("*.mp4")) + sorted(VIDEO_DIR.glob("*.mov")):
+        for video in sorted(VIDEO_DIR.glob("*.mp4")) + sorted(VIDEO_DIR.glob("*.MP4")) + \
+                       sorted(VIDEO_DIR.glob("*.mov")) + sorted(VIDEO_DIR.glob("*.MOV")):
             f.write(str(video) + "\n")
 
 # Lanzar mpv
@@ -186,7 +197,7 @@ def launch_mpv():
     generate_playlist()
     subprocess.Popen([
         "mpv",
-        "--fs", "--loop-playlist", "--pause", "--no-config", "--no-osd-bar", "--osd-level=1",
+        "--fs", "--loop-playlist", "--no-config", "--no-osd-bar", "--osd-level=1",
         f"--playlist={PLAYLIST_FILE}",
         f"--input-ipc-server={SOCKET_PATH}",
         "--osd-font='Liberation Mono'",
@@ -195,9 +206,9 @@ def launch_mpv():
 
 # Proceso de inicio
 if sync_videos():
-    print("USB detectada y sincronizada.")
+    print("USB detectada y videos sincronizados.")
 else:
-    print("No se detectó USB. Usando contenido existente.")
+    print("No se detectó USB. Usando videos existentes.")
 
 update_playlist()
 launch_mpv()
