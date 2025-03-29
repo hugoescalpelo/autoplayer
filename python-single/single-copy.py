@@ -70,10 +70,11 @@ AB    :  Cambiar variante
 
 # --- DETECCIÓN Y CONVERSIÓN ---
 def find_usb_origins():
-    for device in USB_MOUNT_ROOT.iterdir():
-        path = device / USB_FOLDER_NAME
-        if path.exists() and path.is_dir():
-            return path
+    for mount_point in USB_MOUNT_ROOT.iterdir():
+        if mount_point.is_dir():
+            origins_path = mount_point / USB_FOLDER_NAME
+            if origins_path.exists() and origins_path.is_dir():
+                return origins_path
     return None
 
 def is_valid_video(path):
