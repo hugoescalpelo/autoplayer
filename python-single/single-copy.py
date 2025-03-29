@@ -4,17 +4,28 @@ import subprocess
 import json
 import time
 import socket
+import glob
+import re
 from pathlib import Path
+from gpiozero import Button
+from signal import pause
+from enum import IntEnum
 
-# --- CONFIGURACIÓN ---
-DEST_DIR = Path("/home/user/Videos")
+# --- CONFIGURACIÓN GENERAL ---
+USER = os.getenv("USER") or "pi"
+VIDEO_DIR = Path(f"/home/{USER}/Videos")
+SOCKET_PATH = "/tmp/mpvsocket"
+PLAYLIST_FILE = VIDEO_DIR / "playlist.m3u"
 USB_MOUNT_ROOT = Path("/media")
 USB_FOLDER_NAME = "origins"
 TEMP_DIR = Path("/tmp/converted_videos")
-SOCKET_PATH = "/tmp/mpvsocket"
-PLAYLIST_FILE = DEST_DIR / "playlist.m3u"
 
-# --- PARÁMETROS DE VIDEO ---
+# --- GPIO ---
+BTN_LEFT = Button(17, pull_up=True, bounce_time=0.05)
+BTN_RIGHT = Button(22, pull_up=True, bounce_time=0.05)
+BTN_MENU = Button(27, pull_up=True, bounce_time=0.05)
+
+# --- PARÁMETROS DE VIDEO ESPERADOS ---
 EXPECTED_WIDTH = 1920
 EXPECTED_HEIGHT = 1080
 EXPECTED_FPS = 30
@@ -23,18 +34,41 @@ EXPECTED_CODEC = "h264"
 EXPECTED_PROFILE = "High"
 EXPECTED_LEVEL = "4.1"
 
-# --- MOSTRAR MENSAJES OSD ---
+# --- MODOS DE CONTROL ---
+class Mode(IntEnum):
+    REPRO = 0
+    ROTAR = 1
+    ZOOM = 2
+    AB = 3
+
+current_mode = [Mode.REPRO]
+zoom_level = [0.0]
+
+# --- FUNCIONES DE OSD ---
 def send_osd(msg):
     try:
-        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        client.connect(SOCKET_PATH)
-        command = {"command": ["show-text", msg, 4000, 0]}
-        client.send(json.dumps(command).encode() + b'\n')
-        client.close()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(SOCKET_PATH)
+            command = {"command": ["show-text", msg, 4000, 0]}
+            client.send(json.dumps(command).encode() + b'\n')
     except:
         print(f"[OSD] {msg}")
 
-# --- DETECTAR USB CON /origins ---
+def show_osd(title, button):
+    mode = current_mode[0].name
+    text = f"""
++-------------------------------+
+| Modo: {mode:<10} Botón: {button:<8}|
++-------------------------------+
+
+REPRO:  ←5s / →5s / Categorías
+ROTAR:  Rotar 180°
+ZOOM :  Zoom - / Zoom +
+AB    :  Cambiar variante
+"""
+    send_osd(text)
+
+# --- DETECCIÓN Y CONVERSIÓN ---
 def find_usb_origins():
     for device in USB_MOUNT_ROOT.iterdir():
         path = device / USB_FOLDER_NAME
@@ -42,7 +76,6 @@ def find_usb_origins():
             return path
     return None
 
-# --- VERIFICAR FORMATO DE VIDEO ---
 def is_valid_video(path):
     try:
         result = subprocess.run(
@@ -69,44 +102,33 @@ def is_valid_video(path):
         return False
     return False
 
-# --- CONVERTIR ARCHIVO A FORMATO VÁLIDO ---
 def convert_to_valid_format(src, dst):
-    if src.suffix.lower() == '.mp3':
+    if src.suffix.lower() == ".mp3":
         cmd = [
-            "ffmpeg", "-y", "-loop", "1", "-f", "lavfi", "-i", "color=size=1920x1080:rate=30:color=black",
-            "-i", str(src),
-            "-shortest", "-c:v", "libx264", "-profile:v", "high", "-level:v", "4.1", "-b:v", "12M",
-            "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "44100",
-            str(dst)
+            "ffmpeg", "-y", "-loop", "1", "-f", "lavfi", "-i", "color=black:size=1920x1080:rate=30",
+            "-i", str(src), "-shortest", "-c:v", "libx264", "-profile:v", "high",
+            "-level:v", "4.1", "-b:v", "12M", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "44100", str(dst)
         ]
     else:
         cmd = [
-            "ffmpeg", "-y", "-i", str(src),
-            "-c:v", "libx264", "-profile:v", "high", "-level:v", "4.1", "-b:v", "12M",
-            "-vf", "scale=1920:1080,fps=30", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-ar", "44100",
-            str(dst)
+            "ffmpeg", "-y", "-i", str(src), "-c:v", "libx264", "-profile:v", "high", "-level:v", "4.1",
+            "-b:v", "12M", "-vf", "scale=1920:1080,fps=30", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "44100", str(dst)
         ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-# --- GENERAR PLAYLIST ---
-def generate_playlist():
-    with open(PLAYLIST_FILE, "w") as f:
-        for video in sorted(DEST_DIR.glob("*.mp4")):
-            f.write(str(video) + "\n")
-
-# --- SINCRONIZAR VIDEOS ---
 def sync_and_convert_videos():
     usb_path = find_usb_origins()
     if not usb_path:
-        send_osd("No se detectó USB con /origins.")
+        send_osd("No se detectó USB con carpeta /origins.")
         return False
 
     if TEMP_DIR.exists():
         shutil.rmtree(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True)
 
-    send_osd("USB detectada. Iniciando sincronización...")
+    send_osd("Sincronizando archivos...")
 
     for file in usb_path.glob("*"):
         if file.suffix.lower() not in [".mp4", ".mov", ".mp3"]:
@@ -120,35 +142,177 @@ def sync_and_convert_videos():
             send_osd(f"Convirtiendo {file.name}")
             convert_to_valid_format(file, target)
 
-    for f in DEST_DIR.glob("*.mp4"):
+    for f in VIDEO_DIR.glob("*.mp4"):
         f.unlink()
     for f in TEMP_DIR.glob("*.mp4"):
-        shutil.copy(f, DEST_DIR)
+        shutil.copy(f, VIDEO_DIR)
 
     generate_playlist()
-    send_osd("Sincronización completada.")
+    send_osd("Videos actualizados correctamente.")
     return True
 
-# --- ESPERAR A SOCKET DE MPV ---
+def generate_playlist():
+    with open(PLAYLIST_FILE, "w") as f:
+        for video in sorted(VIDEO_DIR.glob("*.mp4")):
+            f.write(str(video) + "\n")
+
+# --- PLAYLIST Y MPV ---
+def build_playlist():
+    pattern = re.compile(r"^(.*?)([A-Z])\.mp4$")
+    files = sorted(glob.glob(str(VIDEO_DIR / "*.mp4")))
+    playlist = []
+    for f in files:
+        name = os.path.basename(f)
+        match = pattern.match(name)
+        if match:
+            category, variant = match.groups()
+            playlist.append((category, variant, f))
+    return playlist
+
+playlist = build_playlist()
+if not playlist:
+    print("No se encontraron videos.")
+    exit(1)
+
+category_list = sorted(set(cat for cat, _, _ in playlist))
+category_index = [0]
+variant_index = [0]
+
+def get_current_index():
+    cat = category_list[category_index[0]]
+    variants = [v for c, v, _ in playlist if c == cat]
+    var = variants[variant_index[0] % len(variants)]
+    for i, (c, v, _) in enumerate(playlist):
+        if c == cat and v == var:
+            return i
+    return 0
+
+def is_socket_available():
+    return os.path.exists(SOCKET_PATH)
+
+def send_mpv(command):
+    if not is_socket_available():
+        return
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(SOCKET_PATH)
+            client.send(json.dumps(command).encode() + b'\n')
+    except:
+        pass
+
+# --- FUNCIONES DE REPRODUCCIÓN ---
+def toggle_pause():
+    send_mpv({"command": ["cycle", "pause"]})
+
+def seek(offset):
+    send_mpv({"command": ["add", "time-pos", offset]})
+
+def rotate_180():
+    send_mpv({"command": ["cycle-values", "video-rotate", "0", "180"]})
+
+def zoom_in():
+    if zoom_level[0] < 1.0:
+        zoom_level[0] += 0.05
+        send_mpv({"command": ["set_property", "video-zoom", round(zoom_level[0], 2)]})
+
+def zoom_out():
+    if zoom_level[0] > -1.0:
+        zoom_level[0] -= 0.05
+        send_mpv({"command": ["set_property", "video-zoom", round(zoom_level[0], 2)]})
+
+def switch_ab():
+    variant_index[0] += 1
+    jump_to_current()
+
+def next_category():
+    category_index[0] = (category_index[0] + 1) % len(category_list)
+    variant_index[0] = 0
+    jump_to_current()
+
+def prev_category():
+    category_index[0] = (category_index[0] - 1) % len(category_list)
+    variant_index[0] = 0
+    jump_to_current()
+
+def jump_to_current():
+    idx = get_current_index()
+    send_mpv({"command": ["playlist-play-index", idx]})
+    send_osd(f"Video: {playlist[idx][0]}{playlist[idx][1]}")
+
+# --- CONTROL DE BOTONES ---
+def cycle_mode():
+    current_mode[0] = Mode((current_mode[0] + 1) % len(Mode))
+
+def hold_duration(button):
+    start = time.monotonic()
+    while button.is_pressed:
+        time.sleep(0.01)
+    return time.monotonic() - start
+
+def handle_menu():
+    duration = hold_duration(BTN_MENU)
+    show_osd("Menú", "MENU")
+    if duration < 0.5 and current_mode[0] == Mode.REPRO:
+        toggle_pause()
+    elif duration >= 0.5:
+        cycle_mode()
+
+def handle_left():
+    duration = hold_duration(BTN_LEFT)
+    show_osd("Acción", "IZQUIERDA")
+    mode = current_mode[0]
+    if mode == Mode.REPRO:
+        if duration < 0.5:
+            seek(-5)
+        else:
+            prev_category()
+    elif mode == Mode.ROTAR:
+        rotate_180()
+    elif mode == Mode.ZOOM:
+        zoom_out()
+    elif mode == Mode.AB:
+        switch_ab()
+
+def handle_right():
+    duration = hold_duration(BTN_RIGHT)
+    show_osd("Acción", "DERECHA")
+    mode = current_mode[0]
+    if mode == Mode.REPRO:
+        if duration < 0.5:
+            seek(5)
+        else:
+            next_category()
+    elif mode == Mode.ROTAR:
+        rotate_180()
+    elif mode == Mode.ZOOM:
+        zoom_in()
+    elif mode == Mode.AB:
+        switch_ab()
+
+# --- INICIO DE MPV Y PROGRAMA ---
 def wait_for_socket():
-    for _ in range(15):
-        if Path(SOCKET_PATH).exists():
+    for _ in range(20):
+        if SOCKET_PATH and Path(SOCKET_PATH).exists():
             return True
         time.sleep(1)
     return False
 
-# --- INICIO DE REPRODUCCIÓN ---
+BTN_MENU.when_pressed = handle_menu
+BTN_LEFT.when_pressed = handle_left
+BTN_RIGHT.when_pressed = handle_right
+
 subprocess.Popen([
-    "mpv",
-    "--fs", "--no-terminal", "--loop-playlist",
-    "--playlist", str(PLAYLIST_FILE),
+    "mpv", "--fs", "--loop-playlist", "--no-terminal", "--no-osd-bar",
+    "--osd-level=1", "--hwdec=drm", "--vo=gpu",
     f"--input-ipc-server={SOCKET_PATH}",
     "--osd-font='Liberation Mono'",
-    "--osd-font-size=26"
+    "--osd-font-size=26",
+    "--playlist", str(PLAYLIST_FILE)
 ])
 
-# --- ESPERAR A SOCKET ---
 if wait_for_socket():
     sync_and_convert_videos()
 else:
     print("No se pudo iniciar el socket de MPV.")
+
+pause()
