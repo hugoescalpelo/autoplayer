@@ -14,7 +14,8 @@ BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
-VIDEO_SUBFOLDER = os.getenv("FOLLOWER_ID", "hor")  # cada follower define su carpeta por FOLLOWER_ID
+with open(f"/home/{USERNAME}/role.txt", "r") as role_file:
+    VIDEO_SUBFOLDER = role_file.read().strip()  # cada follower define su carpeta por FOLLOWER_ID
 LEADER_IP = None
 CATEGORIAS = []
 NEXT_EVENT = threading.Event()
