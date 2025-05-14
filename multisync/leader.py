@@ -3,7 +3,7 @@ import os
 import random
 import threading
 import time
-from mpv import MPV
+import subprocess
 from pathlib import Path
 import getpass
 
@@ -12,25 +12,20 @@ USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
 
-VIDEO_SUBFOLDER = "hor"  # Este líder reproduce videos horizontales
+VIDEO_SUBFOLDER = "hor"  # Este líder usa videos horizontales
 TEXT_SUFFIX = "_text"
 FOLLOWER_PORT = 9001
 RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
 DISCOVERY_MESSAGE = "LEADER_HERE"
 
-# === Extensiones soportadas ===
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
-# === MPV para audio continuo ===
-mpv_audio = MPV()
-mpv_audio.volume = 100
-
-# === Seguimiento de followers ===
 followers = set()
 followers_lock = threading.Lock()
 
+# === Enviar beacons para descubrimiento automático ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -41,6 +36,7 @@ def broadcast_leader():
         except:
             break
 
+# === Escuchar registros de followers ===
 def follower_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -58,6 +54,7 @@ def handle_follower(conn, addr):
         else:
             print(f"Mensaje inesperado de {addr}: {data}")
 
+# === Esperar confirmación de los followers ===
 def wait_for_completion(expected):
     received = 0
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -70,29 +67,42 @@ def wait_for_completion(expected):
             received += 1
     server.close()
 
-def play_audio_background():
-    try:
-        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
-        if not audio_files:
-            print("⚠️ No se encontraron audios.")
-            return
-        audio = random.choice(audio_files)
-        mpv_audio.play(os.path.join(BASE_AUDIO_DIR, audio))
-        mpv_audio.wait_for_playback()
-    except Exception as e:
-        print(f"Error al reproducir audio: {e}")
+# === Reproducción de audio independiente ===
+def play_audio_background(audio_path):
+    subprocess.Popen([
+        "mpv",
+        "--no-video",
+        "--loop=no",
+        "--quiet",
+        "--no-terminal",
+        "--audio-device=alsa/hdmi",  # ajusta según salida deseada
+        audio_path
+    ])
 
+# === Reproducir video de forma bloqueante ===
+def play_video(video_path):
+    subprocess.run([
+        "mpv",
+        "--fs",
+        "--hwdec=auto",
+        "--quiet",
+        "--no-terminal",
+        video_path
+    ])
+
+# === Obtener categorías desde carpetas ===
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
+# === Seleccionar 3 videos normales + 1 de texto ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
     if not os.path.exists(path) or not os.path.exists(text_path):
         print(f"⚠️ Carpeta faltante en categoría {categoria}")
         return []
-    
+
     otros = [f for f in os.listdir(path) if f.lower().endswith(VIDEO_EXTENSIONS)]
     textos = [f for f in os.listdir(text_path) if f.lower().endswith(VIDEO_EXTENSIONS)]
 
@@ -103,6 +113,7 @@ def pick_videos(categoria):
     seleccionados = random.sample(otros, 3) + [random.choice(textos)]
     return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
 
+# === Enviar comando a todos los followers ===
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -114,13 +125,21 @@ def send_to_followers(message):
                 print(f"Error al enviar a {host}: {e}")
                 followers.remove(host)
 
+# === Bucle principal del líder ===
 def main():
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
-    threading.Thread(target=play_audio_background, daemon=True).start()
 
-    print("🔄 Esperando a followers... (10s)")
+    print("🔄 Esperando followers... (10s)")
     time.sleep(10)
+
+    # reproducir audio en background
+    audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
+    if audio_files:
+        audio = random.choice(audio_files)
+        play_audio_background(os.path.join(BASE_AUDIO_DIR, audio))
+    else:
+        print("⚠️ No se encontró ningún audio en Music/")
 
     categorias = pick_categories()
     if not categorias:
@@ -141,17 +160,13 @@ def main():
 
         for v in videos:
             print(f"▶️ Reproduciendo: {os.path.basename(v)}")
-            mpv = MPV()
-            mpv.fullscreen = True
-            mpv.hwdec = 'auto'
-            mpv.play(v)
-            mpv.wait_for_playback()
+            play_video(v)
 
         print("⏳ Esperando a followers...")
         wait_for_completion(expected=len(followers))
         send_to_followers("NEXT")
 
-    print("\n✅ Todas las categorías reproducidas. Fin del ciclo.")
+    print("\n✅ Fin del ciclo de reproducción.")
 
 if __name__ == '__main__':
     main()

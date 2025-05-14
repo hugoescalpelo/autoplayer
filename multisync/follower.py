@@ -3,8 +3,8 @@ import os
 import random
 import threading
 import time
+import subprocess
 import getpass
-from mpv import MPV
 import sys
 
 # === Configuración de paths dinámicos ===
@@ -23,14 +23,10 @@ DISCOVERY_MESSAGE = "LEADER_HERE"
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
-# === Reproductor de audio independiente ===
-mpv_audio = MPV()
-mpv_audio.volume = 100
-
-# === Estado global ===
 leader_ip = None
 categorias = []
 
+# === Asignación de carpetas por rol ===
 def get_video_folder_by_role(role):
     if role == 'leader' or role == 'follower2':
         return "hor", "hor_text"
@@ -40,6 +36,7 @@ def get_video_folder_by_role(role):
         print("⛔ Rol desconocido.")
         sys.exit(1)
 
+# === Descubrimiento del líder por UDP ===
 def discover_leader(timeout=30):
     global leader_ip
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -59,6 +56,7 @@ def discover_leader(timeout=30):
         sock.close()
     return leader_ip
 
+# === Registro con el líder ===
 def register_with_leader():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
@@ -69,18 +67,70 @@ def register_with_leader():
             print(f"❌ Error al registrar: {e}")
             sys.exit(1)
 
-def play_audio_background():
-    try:
-        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
-        if not audio_files:
-            print("⚠️ No se encontraron audios.")
-            return
-        audio = random.choice(audio_files)
-        mpv_audio.play(os.path.join(BASE_AUDIO_DIR, audio))
-        mpv_audio.wait_for_playback()
-    except Exception as e:
-        print(f"⚠️ Error en audio: {e}")
+# === Reproducir audio de fondo ===
+def play_audio_background(audio_path):
+    subprocess.Popen([
+        "mpv",
+        "--no-video",
+        "--loop=no",
+        "--quiet",
+        "--no-terminal",
+        "--audio-device=alsa/hdmi",
+        audio_path
+    ])
 
+# === Reproducir video (bloqueante) ===
+def play_video(video_path):
+    subprocess.run([
+        "mpv",
+        "--fs",
+        "--hwdec=auto",
+        "--quiet",
+        "--no-terminal",
+        video_path
+    ])
+
+# === Reproducir categoría completa ===
+def play_category(categoria, video_folder, text_folder):
+    videos = pick_videos(categoria, video_folder, text_folder)
+    if not videos:
+        notify_done()
+        return
+    random.shuffle(videos)
+    for v in videos:
+        print(f"▶️ {os.path.basename(v)}")
+        play_video(v)
+    notify_done()
+
+# === Selección de videos por categoría ===
+def pick_videos(categoria, video_folder, text_folder):
+    path = os.path.join(BASE_VIDEO_DIR, categoria, video_folder)
+    text_path = os.path.join(BASE_VIDEO_DIR, categoria, text_folder)
+    if not os.path.exists(path) or not os.path.exists(text_path):
+        print(f"⚠️ Carpeta faltante en {categoria}")
+        return []
+
+    otros = [f for f in os.listdir(path) if f.lower().endswith(VIDEO_EXTENSIONS)]
+    textos = [f for f in os.listdir(text_path) if f.lower().endswith(VIDEO_EXTENSIONS)]
+
+    if len(otros) < 3 or len(textos) < 1:
+        print(f"⚠️ No hay suficientes videos en {categoria}")
+        return []
+
+    seleccionados = random.sample(otros, 3) + [random.choice(textos)]
+    return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
+
+# === Notificar al líder que se terminó la reproducción ===
+def notify_done():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.connect((leader_ip, RESPONSE_PORT))
+            s.sendall(b'done')
+            print("✅ Notificado al líder.")
+        except Exception as e:
+            print(f"❌ Error al notificar al líder: {e}")
+
+# === Escuchar comandos del líder ===
 def listen_for_commands(video_folder, text_folder):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -99,47 +149,7 @@ def listen_for_commands(video_folder, text_folder):
         elif data == "NEXT":
             continue
 
-def pick_videos(categoria, video_folder, text_folder):
-    path = os.path.join(BASE_VIDEO_DIR, categoria, video_folder)
-    text_path = os.path.join(BASE_VIDEO_DIR, categoria, text_folder)
-    if not os.path.exists(path) or not os.path.exists(text_path):
-        print(f"⚠️ Carpeta faltante en {categoria}")
-        return []
-
-    otros = [f for f in os.listdir(path) if f.lower().endswith(VIDEO_EXTENSIONS)]
-    textos = [f for f in os.listdir(text_path) if f.lower().endswith(VIDEO_EXTENSIONS)]
-
-    if len(otros) < 3 or len(textos) < 1:
-        print(f"⚠️ No hay suficientes videos.")
-        return []
-
-    seleccionados = random.sample(otros, 3) + [random.choice(textos)]
-    return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
-
-def play_category(categoria, video_folder, text_folder):
-    videos = pick_videos(categoria, video_folder, text_folder)
-    if not videos:
-        notify_done()
-        return
-    random.shuffle(videos)
-    for v in videos:
-        print(f"▶️ {os.path.basename(v)}")
-        mpv = MPV()
-        mpv.fullscreen = True
-        mpv.hwdec = 'auto'
-        mpv.play(v)
-        mpv.wait_for_playback()
-    notify_done()
-
-def notify_done():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.connect((leader_ip, RESPONSE_PORT))
-            s.sendall(b'done')
-            print("✅ Notificación enviada al líder.")
-        except Exception as e:
-            print(f"❌ Error al notificar al líder: {e}")
-
+# === Leer el rol del dispositivo ===
 def get_role():
     try:
         with open(ROLE_FILE, 'r') as f:
@@ -148,6 +158,7 @@ def get_role():
         print("⛔ No se pudo leer el archivo de rol.")
         sys.exit(1)
 
+# === Main ===
 def main():
     role = get_role()
     if not role.startswith("follower"):
@@ -161,7 +172,14 @@ def main():
     print(f"🎯 Líder detectado en: {leader_ip}")
     register_with_leader()
 
-    threading.Thread(target=play_audio_background, daemon=True).start()
+    # Reproducir audio de fondo
+    audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
+    if audio_files:
+        audio = random.choice(audio_files)
+        play_audio_background(os.path.join(BASE_AUDIO_DIR, audio))
+    else:
+        print("⚠️ No se encontró audio de fondo.")
+
     listen_for_commands(video_folder, text_folder)
 
 if __name__ == '__main__':
