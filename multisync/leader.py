@@ -4,16 +4,14 @@ import random
 import threading
 import time
 import subprocess
-from pathlib import Path
 import getpass
 
 # === Configuración dinámica de paths ===
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
-BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
+BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
 
-VIDEO_SUBFOLDER = "hor"  # Este líder usa videos horizontales
-TEXT_SUFFIX = "_text"
+VIDEO_SUBFOLDER = "hor"
 FOLLOWER_PORT = 9001
 RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
@@ -25,7 +23,7 @@ AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 followers = set()
 followers_lock = threading.Lock()
 
-# === Enviar beacons para descubrimiento automático ===
+# === Beacon para descubrimiento automático ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -36,7 +34,7 @@ def broadcast_leader():
         except:
             break
 
-# === Escuchar registros de followers ===
+# === Escuchar followers ===
 def follower_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -54,7 +52,7 @@ def handle_follower(conn, addr):
         else:
             print(f"Mensaje inesperado de {addr}: {data}")
 
-# === Esperar confirmación de los followers ===
+# === Esperar confirmaciones de reproducción ===
 def wait_for_completion(expected):
     received = 0
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -67,38 +65,40 @@ def wait_for_completion(expected):
             received += 1
     server.close()
 
-# === Reproducción de audio independiente ===
+# === Reproducir audio en segundo plano ===
 def play_audio_background(audio_path):
     subprocess.Popen([
         "mpv",
         "--no-video",
+        "--audio-device=alsa/hdmi",
         "--loop=no",
         "--quiet",
         "--no-terminal",
-        "--audio-device=alsa/hdmi",  # ajusta según salida deseada
         audio_path
     ])
 
-# === Reproducir video de forma bloqueante ===
+# === Reproducir video con ajustes para Raspberry Pi ===
 def play_video(video_path):
     subprocess.run([
         "mpv",
         "--fs",
-        "--hwdec=auto",
-        "--quiet",
+        "--vo=rpi",
+        "--hwdec=rpi",
         "--no-terminal",
+        "--quiet",
         video_path
     ])
 
-# === Obtener categorías desde carpetas ===
+# === Elegir categorías disponibles ===
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
-# === Seleccionar 3 videos normales + 1 de texto ===
+# === Seleccionar videos para una categoría ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
+
     if not os.path.exists(path) or not os.path.exists(text_path):
         print(f"⚠️ Carpeta faltante en categoría {categoria}")
         return []
@@ -113,7 +113,7 @@ def pick_videos(categoria):
     seleccionados = random.sample(otros, 3) + [random.choice(textos)]
     return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
 
-# === Enviar comando a todos los followers ===
+# === Enviar mensaje a todos los followers ===
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -133,13 +133,13 @@ def main():
     print("🔄 Esperando followers... (10s)")
     time.sleep(10)
 
-    # reproducir audio en background
+    # reproducir audio
     audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
     if audio_files:
         audio = random.choice(audio_files)
         play_audio_background(os.path.join(BASE_AUDIO_DIR, audio))
     else:
-        print("⚠️ No se encontró ningún audio en Music/")
+        print("⚠️ No se encontró ningún archivo de audio en Music/")
 
     categorias = pick_categories()
     if not categorias:
