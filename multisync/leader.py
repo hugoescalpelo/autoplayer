@@ -7,32 +7,21 @@ import subprocess
 import getpass
 from tempfile import NamedTemporaryFile
 
-# Obtener el nombre de usuario actual del sistema
 USERNAME = getpass.getuser()
-
-# Definir rutas base para los videos y audios
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"  # ajustado según indicación
 
-# Subcarpeta usada para los videos del líder
 VIDEO_SUBFOLDER = "hor"
-
-# Puertos de comunicación
 FOLLOWER_PORT = 9001
 RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
 DISCOVERY_MESSAGE = "LEADER_HERE"
 
-# Extensiones válidas para archivos multimedia
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
-# Seguimiento de followers conectados
 followers = set()
 followers_lock = threading.Lock()
-
-# Eventos para control de sincronización
-category_lock = threading.Event()
 done_flag = threading.Event()
 
 # Verifica si un archivo es un video válido
@@ -73,16 +62,23 @@ def handle_follower(conn, addr):
         else:
             print(f"⚠️ Mensaje inesperado de {addr}: {data}")
 
-# Espera el primer "done" recibido para pasar a la siguiente categoría
+# Servidor que espera un solo mensaje "done" y activa la bandera
 def response_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(('0.0.0.0', RESPONSE_PORT))
-    server.listen(10)
-    conn, _ = server.accept()
-    data = conn.recv(1024).decode()
-    if data == 'done':
-        done_flag.set()
-    server.close()
+    while True:
+        try:
+            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(('0.0.0.0', RESPONSE_PORT))
+            server.listen(1)
+            conn, _ = server.accept()
+            data = conn.recv(1024).decode()
+            if data == 'done':
+                done_flag.set()
+            conn.close()
+            server.close()
+        except Exception as e:
+            print(f"⚠️ Error en response_server: {e}")
+            time.sleep(1)
 
 # Reproduce audio en segundo plano sin bloquear
 def play_audio_background(audio_path):
@@ -110,6 +106,7 @@ def play_video_sequence_with_mpv(playlist_path):
         "--keep-open=always", "--loop-playlist=no", f"--playlist={playlist_path}"
     ])
     os.remove(playlist_path)  # Limpia el archivo de lista temporal
+    notify_done()
 
 # Obtiene las carpetas disponibles como categorías
 def pick_categories():
@@ -157,6 +154,7 @@ def notify_done():
 def main():
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
+    threading.Thread(target=response_server, daemon=True).start()
 
     audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if is_valid_audio(f)]
     if audio_files:
@@ -181,12 +179,10 @@ def main():
                 continue
 
             done_flag.clear()
-            threading.Thread(target=response_server, daemon=True).start()
             send_to_followers("PLAY:" + cat)
 
             playlist_path = generate_mpv_playlist(videos)
             threading.Thread(target=play_video_sequence_with_mpv, args=(playlist_path,), daemon=True).start()
-            threading.Thread(target=notify_done, daemon=True).start()
 
             done_flag.wait()
             send_to_followers("NEXT")
