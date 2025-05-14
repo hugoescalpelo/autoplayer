@@ -22,6 +22,9 @@ AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 followers = set()
 followers_lock = threading.Lock()
 
+category_lock = threading.Event()  # se usa para avanzar de categoría
+done_flag = threading.Event()      # se activa cuando el primero termina
+
 def is_valid_video(filename):
     return filename.lower().endswith(VIDEO_EXTENSIONS)
 
@@ -55,16 +58,15 @@ def handle_follower(conn, addr):
         else:
             print(f"⚠️ Mensaje inesperado de {addr}: {data}")
 
-def wait_for_completion(expected):
-    received = 0
+def response_server():
+    """Escucha quién termina primero. Al primer 'done' recibido, activa el evento."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('0.0.0.0', RESPONSE_PORT))
-    server.listen(expected)
-    while received < expected:
-        conn, _ = server.accept()
-        data = conn.recv(1024).decode()
-        if data == 'done':
-            received += 1
+    server.listen(10)
+    conn, _ = server.accept()
+    data = conn.recv(1024).decode()
+    if data == 'done':
+        done_flag.set()
     server.close()
 
 def play_audio_background(audio_path):
@@ -96,7 +98,8 @@ def play_video_sequence(videos):
             "--keep-open=yes",
             video_path
         ])
-        time.sleep(1)  # pequeña pausa para estabilidad visual
+        time.sleep(1)
+    notify_done()
 
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
@@ -131,6 +134,15 @@ def send_to_followers(message):
                 print(f"⚠️ Error al enviar a {host}: {e}")
                 followers.remove(host)
 
+def notify_done():
+    """El líder también participa como 'follower'"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(('127.0.0.1', RESPONSE_PORT))
+            s.sendall(b'done')
+    except Exception as e:
+        print(f"⚠️ El líder no pudo notificarse a sí mismo: {e}")
+
 def main():
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
@@ -157,13 +169,17 @@ def main():
             if not videos:
                 continue
 
+            done_flag.clear()
+            threading.Thread(target=response_server, daemon=True).start()
             send_to_followers("PLAY:" + cat)
-            play_video_sequence(videos)
 
-            wait_for_completion(expected=len(followers))
+            threading.Thread(target=play_video_sequence, args=(videos,), daemon=True).start()
+
+            # Esperar a que cualquiera (incluso yo) diga "done"
+            done_flag.wait()
             send_to_followers("NEXT")
 
-        print("🔁 Ciclo completado. Iniciando otro...")
+        print("🔁 Ciclo completado. Reiniciando...")
 
 if __name__ == '__main__':
     main()
