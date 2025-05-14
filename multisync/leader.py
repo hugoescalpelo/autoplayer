@@ -23,7 +23,7 @@ AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 followers = set()
 followers_lock = threading.Lock()
 done_flag = threading.Event()
-categoria_queue = []  # Playlist de categorías predeterminada
+categoria_queue = []
 
 # Verifica si un archivo es un video válido
 def is_valid_video(filename):
@@ -53,7 +53,6 @@ def follower_server():
         conn, addr = server.accept()
         threading.Thread(target=handle_follower, args=(conn, addr), daemon=True).start()
 
-# Maneja los registros de nuevos followers
 def handle_follower(conn, addr):
     with conn:
         data = conn.recv(1024).decode()
@@ -63,7 +62,6 @@ def handle_follower(conn, addr):
         else:
             print(f"⚠️ Mensaje inesperado de {addr}: {data}")
 
-# Servidor que espera un solo mensaje "done" y activa la bandera
 def response_server():
     while True:
         try:
@@ -81,7 +79,6 @@ def response_server():
             print(f"⚠️ Error en response_server: {e}")
             time.sleep(1)
 
-# Reproduce audio en segundo plano sin bloquear
 def play_audio_background(audio_path):
     try:
         subprocess.Popen([
@@ -91,15 +88,14 @@ def play_audio_background(audio_path):
     except Exception as e:
         print(f"⚠️ Error al reproducir audio: {e}")
 
-# Genera un archivo temporal con la lista de reproducción
-def generate_mpv_playlist(video_paths):
+def generate_mpv_playlist(all_video_blocks):
     playlist = NamedTemporaryFile(mode='w', delete=False, suffix=".m3u")
-    for path in video_paths:
-        playlist.write(f"{path}\n")
+    for block in all_video_blocks:
+        for video in block:
+            playlist.write(f"{video}\n")
     playlist.close()
     return playlist.name
 
-# Ejecuta mpv con la lista de reproducción de 4 videos
 def play_video_sequence_with_mpv(playlist_path):
     subprocess.run([
         "mpv", "--fs", "--vo=gpu", "--hwdec=no", "--no-terminal", "--quiet",
@@ -108,12 +104,10 @@ def play_video_sequence_with_mpv(playlist_path):
     ])
     os.remove(playlist_path)
 
-# Selecciona categorías aleatorias al arrancar
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
-# Selecciona 1 video de texto + 3 normales para una categoría
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
@@ -129,7 +123,6 @@ def pick_videos(categoria):
         print(f"⚠️ No suficientes videos en {categoria}")
         return []
 
-# Envía un mensaje a todos los followers conectados
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -141,7 +134,6 @@ def send_to_followers(message):
                 print(f"⚠️ Error al enviar a {host}: {e}")
                 followers.remove(host)
 
-# El líder también envía 'done' como si fuera un follower
 def notify_done():
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -150,26 +142,23 @@ def notify_done():
     except Exception as e:
         print(f"⚠️ El líder no pudo notificarse a sí mismo: {e}")
 
-# Ciclo de reproducción continuo
 def play_loop():
-    while True:
-        for cat in categoria_queue:
-            print(f"\n🎬 Categoría actual: {cat}")
-            videos = pick_videos(cat)
-            if not videos:
-                continue
+    # Prepara 65536 bloques de 4 videos
+    all_blocks = []
+    for _ in range(65536):
+        categoria = random.choice(categoria_queue)
+        videos = pick_videos(categoria)
+        if videos:
+            all_blocks.append(videos)
 
-            done_flag.clear()
-            send_to_followers("PLAY:" + cat)
+    print(f"🧾 Playlist total generada con {len(all_blocks)} bloques")
+    send_to_followers("CATEGORIAS:" + ','.join(categoria_queue))
 
-            playlist_path = generate_mpv_playlist(videos)
-            threading.Thread(target=notify_done, daemon=True).start()
-            play_video_sequence_with_mpv(playlist_path)
+    # Inicia hilo de control
+    threading.Thread(target=notify_done, daemon=True).start()
+    playlist_path = generate_mpv_playlist(all_blocks)
+    play_video_sequence_with_mpv(playlist_path)
 
-            done_flag.wait()
-            send_to_followers("NEXT")
-
-# Función principal del líder
 def main():
     global categoria_queue
     threading.Thread(target=broadcast_leader, daemon=True).start()
@@ -191,7 +180,6 @@ def main():
     while True:
         random.shuffle(categorias)
         categoria_queue = categorias[:]
-        send_to_followers("CATEGORIAS:" + ','.join(categoria_queue))
         play_loop()
 
 if __name__ == '__main__':
