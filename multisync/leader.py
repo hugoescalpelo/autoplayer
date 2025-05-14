@@ -24,10 +24,13 @@ def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     while True:
-        msg = f"LEADER_HERE:{','.join(categoria_queue)}"
-        sock.sendto(msg.encode(), ('<broadcast>', 8888))
-        print(f"📢 Broadcast enviado: {msg}")
-        time.sleep(30)
+        if categoria_queue:
+            msg = f"LEADER_HERE:{','.join(categoria_queue)}"
+            sock.sendto(msg.encode(), ('<broadcast>', 8888))
+            print(f"📢 Broadcast enviado: {msg}")
+        else:
+            print("📢 Broadcast omitido: sin categorías")
+        time.sleep(10)
 
 # === Recibir registros de followers ===
 def listen_for_followers():
@@ -104,12 +107,12 @@ def play_video_sequence(playlist_path):
 
 def play_loop():
     blocks = []
-    for _ in range(65536):
+    for _ in range(64):
         cat = random.choice(categoria_queue)
         vids = pick_videos(cat)
         if vids:
             blocks.append(vids)
-    send_to_followers("CATEGORIAS:" + ','.join(categoria_queue))
+    time.sleep(1); send_to_followers("CATEGORIAS:" + ','.join(categoria_queue))
     playlist = generate_playlist(blocks)
     threading.Thread(target=send_done_later, daemon=True).start()
     play_video_sequence(playlist)
@@ -139,8 +142,8 @@ def main():
     while True:
         random.shuffle(categoria_queue)
         play_loop()
-        done_flag.wait()
-        send_to_followers("NEXT")
+        print("⏳ Esperando DONE de cualquier follower..."); done_flag.wait()
+        print("📤 Enviando NEXT a followers"); send_to_followers("NEXT")
         done_flag.clear()
 
 if __name__ == '__main__':

@@ -31,9 +31,14 @@ def discover_leader():
     sock.bind(('', 8888))
     while True:
         data, addr = sock.recvfrom(1024)
-        if data.decode().startswith("LEADER_HERE"):
+        decoded = data.decode()
+        if decoded.startswith("LEADER_HERE"):
+            parts = decoded.split(":")
+            if len(parts) > 1:
+                CATEGORIAS.clear()
+                CATEGORIAS.extend(parts[1].split(","))
             LEADER_IP = addr[0]
-            print(f"✅ Líder detectado en {LEADER_IP}")
+            print(f"✅ Líder detectado en {LEADER_IP} con categorías: {CATEGORIAS}")
             break
 
 # === Registro como follower vía UDP ===
@@ -130,4 +135,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
