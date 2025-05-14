@@ -20,7 +20,8 @@ print(f"🎭 Follower iniciado con rol: {VIDEO_SUBFOLDER}")
 
 LEADER_IP = None
 CATEGORIAS = []
-NEXT_EVENT = threading.Event()
+ultima_categoria = None
+categoria_lock = threading.Lock()
 
 # === Comunicación con líder (solo UDP) ===
 def discover_leader():
@@ -41,17 +42,17 @@ def discover_leader():
             print(f"✅ Líder detectado en {LEADER_IP} con categorías: {CATEGORIAS}")
             break
 
-# === Registro como follower vía UDP ===
 def register_with_leader():
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.sendto(f"REGISTER:{socket.gethostname()}".encode(), (LEADER_IP, 8899))
+            msg = f"REGISTER:{socket.gethostname()}"
+            s.sendto(msg.encode(), (LEADER_IP, 8899))
         print("📡 Registrado con el líder (UDP)")
     except Exception as e:
         print(f"❌ No se pudo registrar con el líder: {e}")
 
-# === Receptor de órdenes por UDP ===
 def listen_commands():
+    global ultima_categoria
     print("🎧 Esperando instrucciones del líder...")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', 9001))
@@ -65,13 +66,16 @@ def listen_commands():
             print(f"📂 Categorías recibidas: {CATEGORIAS}")
         elif data.startswith("PLAY:"):
             categoria = data.split(":", 1)[1]
-            print(f"🎬 Reproduciendo categoría: {categoria}")
-            threading.Thread(target=reproduce_categoria, args=(categoria,), daemon=True).start()
+            print(f"🎬 Recibido PLAY para categoría: {categoria}")
+            with categoria_lock:
+                if ultima_categoria != categoria:
+                    ultima_categoria = categoria
+                    threading.Thread(target=reproduce_categoria, args=(categoria,), daemon=True).start()
+                else:
+                    print("⏭️ Categoría ya en reproducción. Ignorando.")
         elif data == "NEXT":
             print("➡️ Recibido NEXT")
-            NEXT_EVENT.set()
 
-# === Reproducción de 4 videos como playlist ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
@@ -112,7 +116,6 @@ def reproduce_categoria(categoria):
     except Exception as e:
         print(f"⚠️ No se pudo enviar DONE al líder: {e}")
 
-# === Audio ambiental continuo ===
 def play_audio_background():
     files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
     if not files:
@@ -124,11 +127,10 @@ def play_audio_background():
         os.path.join(BASE_AUDIO_DIR, file)
     ])
 
-# === MAIN ===
 def main():
+    threading.Thread(target=listen_commands, daemon=True).start()
     discover_leader()
     register_with_leader()
-    threading.Thread(target=listen_commands, daemon=True).start()
     play_audio_background()
     while True:
         time.sleep(1)
