@@ -23,58 +23,36 @@ CATEGORIAS = []
 ultima_categoria = None
 categoria_lock = threading.Lock()
 
-def discover_leader():
-    global LEADER_IP
-    print("🔍 Buscando líder por broadcast...")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(('', 8888))
-    while True:
-        data, addr = sock.recvfrom(1024)
-        decoded = data.decode()
-        if decoded.startswith("LEADER_HERE"):
-            parts = decoded.split(":")
-            if len(parts) > 1:
-                CATEGORIAS.clear()
-                CATEGORIAS.extend(parts[1].split(","))
-            LEADER_IP = addr[0]
-            print(f"✅ Líder detectado en {LEADER_IP} con categorías: {CATEGORIAS}")
-            break
+# === Reproductor de espera invisible ===
+def play_idle_loop():
+    while not LEADER_IP:
+        time.sleep(1)
+    print("🕸️ En espera de instrucciones del líder...")
 
-def register_with_leader():
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            msg = f"REGISTER:{socket.gethostname()}"
-            s.sendto(msg.encode(), (LEADER_IP, 8899))
-        print("📡 Registrado con el líder (UDP)")
-    except Exception as e:
-        print(f"❌ No se pudo registrar con el líder: {e}")
-
+# === Escucha categoría y comandos del líder ===
 def listen_commands():
     global ultima_categoria
-    print("🎧 Esperando instrucciones del líder...")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', 9001))
+    print("🎧 Escuchando comandos del líder en puerto 9001 UDP...")
     while True:
-        data, _ = sock.recvfrom(2048)
-        data = data.decode()
-        if data.startswith("CATEGORIAS:"):
-            categorias_str = data.split(":", 1)[1]
+        data, addr = sock.recvfrom(1024)
+        msg = data.decode()
+        if msg.startswith("CATEGORIAS:"):
             CATEGORIAS.clear()
-            CATEGORIAS.extend(categorias_str.split(","))
-            print(f"📂 Categorías recibidas: {CATEGORIAS}")
-        elif data.startswith("PLAY:"):
-            categoria = data.split(":", 1)[1]
-            print(f"🎬 Recibido PLAY para categoría: {categoria}")
+            CATEGORIAS.extend(msg.split(":", 1)[1].split(","))
+            print(f"📂 Categorías disponibles: {CATEGORIAS}")
+        elif msg.startswith("PLAY:"):
+            categoria = msg.split(":", 1)[1]
+            print(f"🎬 Instrucción PLAY recibida: {categoria}")
             with categoria_lock:
-                if ultima_categoria != categoria:
+                if categoria != ultima_categoria:
                     ultima_categoria = categoria
                     threading.Thread(target=reproduce_categoria, args=(categoria,), daemon=True).start()
-                else:
-                    print("⏭️ Categoría ya en reproducción. Ignorando.")
-        elif data == "NEXT":
+        elif msg == "NEXT":
             print("➡️ Recibido NEXT")
 
+# === Reproducir videos de categoría ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
@@ -98,10 +76,10 @@ def generate_playlist(videos):
 def reproduce_categoria(categoria):
     videos = pick_videos(categoria)
     if not videos:
-        print("⚠️ No se encontraron suficientes videos para reproducir")
+        print("⚠️ No se encontraron videos para la categoría")
         return
     playlist = generate_playlist(videos)
-    print(f"▶️ Reproduciendo: {videos}")
+    print(f"▶️ Reproduciendo videos: {videos}")
     subprocess.run([
         "mpv", "--fs", "--vo=gpu", "--hwdec=no", "--no-terminal", "--quiet",
         "--gapless-audio", "--image-display-duration=inf", "--no-stop-screensaver",
@@ -111,10 +89,11 @@ def reproduce_categoria(categoria):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.sendto(b'done', (LEADER_IP, 9100))
-        print("✅ Señal DONE enviada al líder (UDP)")
+        print("✅ Señal DONE enviada al líder")
     except Exception as e:
-        print(f"⚠️ No se pudo enviar DONE al líder: {e}")
+        print(f"⚠️ Error al enviar DONE: {e}")
 
+# === Audio ambiental continuo ===
 def play_audio_background():
     files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
     if not files:
@@ -126,8 +105,32 @@ def play_audio_background():
         os.path.join(BASE_AUDIO_DIR, file)
     ])
 
+# === Buscar líder por broadcast ===
+def discover_leader():
+    global LEADER_IP
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(('', 8888))
+    while not LEADER_IP:
+        data, addr = sock.recvfrom(1024)
+        if data.decode().startswith("LEADER_HERE"):
+            LEADER_IP = addr[0]
+            print(f"✅ Líder detectado en {LEADER_IP}")
+            break
+
+# === Registrar con el líder ===
+def register_with_leader():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.sendto(f"REGISTER:{socket.gethostname()}".encode(), (LEADER_IP, 8899))
+        print("📡 Registrado con el líder")
+    except Exception as e:
+        print(f"❌ Registro fallido: {e}")
+
+# === MAIN ===
 def main():
     threading.Thread(target=listen_commands, daemon=True).start()
+    threading.Thread(target=play_idle_loop, daemon=True).start()
     discover_leader()
     register_with_leader()
     play_audio_background()

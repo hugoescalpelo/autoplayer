@@ -10,8 +10,7 @@ from tempfile import NamedTemporaryFile
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
-VIDEO_SUBFOLDER = "hor"
-
+VIDEO_SUBFOLDERS = ["hor", "ver_rotated"]
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
@@ -20,7 +19,7 @@ categoria_queue = []
 done_flag = threading.Event()
 current_category = None
 
-# === Broadcast periódico de presencia y plan ===
+# === Broadcast periódico del líder con el plan de reproducción ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -30,7 +29,7 @@ def broadcast_leader():
         print(f"📢 Broadcast enviado: {msg}")
         time.sleep(10)
 
-# === Recibir registros de followers ===
+# === Escuchar registros de nuevos followers ===
 def listen_for_followers():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', 8899))
@@ -41,11 +40,10 @@ def listen_for_followers():
         if msg.startswith("REGISTER:"):
             followers.add(addr[0])
             print(f"✅ Nuevo follower registrado desde {addr[0]}")
-            # Reenvía categoría actual si hay una
             if current_category:
                 send_to_followers(f"PLAY:{current_category}")
 
-# === Enviar comando a followers ===
+# === Enviar comandos a todos los followers ===
 def send_to_followers(message):
     for ip in list(followers):
         try:
@@ -53,21 +51,21 @@ def send_to_followers(message):
                 s.sendto(message.encode(), (ip, 9001))
             print(f"📨 Enviado a {ip}: {message}")
         except Exception as e:
-            print(f"⚠️ Error enviando a {ip}: {e}")
+            print(f"⚠️ Error al enviar a {ip}: {e}")
             followers.discard(ip)
 
-# === Servidor UDP para DONE ===
+# === Recibir notificaciones DONE ===
 def receive_done():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', 9100))
-    print("🕓 Esperando señal DONE en puerto 9100 UDP...")
+    print("🕓 Esperando señales DONE en puerto 9100 UDP...")
     while True:
         data, addr = sock.recvfrom(1024)
         if data.decode() == 'done':
             print(f"✔️ DONE recibido de {addr[0]}")
             done_flag.set()
 
-# === Video tools ===
+# === Utilidades para manejo de videos ===
 def is_valid_video(filename):
     return filename.lower().endswith(VIDEO_EXTENSIONS)
 
@@ -75,11 +73,12 @@ def is_valid_audio(filename):
     return filename.lower().endswith(AUDIO_EXTENSIONS)
 
 def pick_categories():
-    return [d for d in os.listdir(BASE_VIDEO_DIR) if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
+    return [d for d in os.listdir(BASE_VIDEO_DIR)
+            if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
-def pick_videos(categoria):
-    path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
-    text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
+def pick_videos(categoria, subfolder):
+    path = os.path.join(BASE_VIDEO_DIR, categoria, subfolder)
+    text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{subfolder}_text")
     if not os.path.exists(path) or not os.path.exists(text_path):
         return []
     otros = [f for f in os.listdir(path) if is_valid_video(f)]
@@ -108,20 +107,22 @@ def play_video_sequence(playlist_path):
 
 def play_loop():
     global current_category
-    blocks = []
-    for _ in range(64):
-        cat = random.choice(categoria_queue)
-        vids = pick_videos(cat)
-        if vids:
-            blocks.append(vids)
-    send_to_followers("CATEGORIAS:" + ','.join(categoria_queue))
-    time.sleep(1)
-    for block in blocks:
-        current_category = categoria_queue[categoria_queue.index(block[1].split('/')[-2])]  # inferir categoría actual
-        send_to_followers(f"PLAY:{current_category}")
-        playlist = generate_playlist([block])
+    for categoria in categoria_queue:
+        print(f"🎬 Reproduciendo categoría: {categoria}")
+        current_category = categoria
+        blocks = []
+        for subfolder in VIDEO_SUBFOLDERS:
+            vids = pick_videos(categoria, subfolder)
+            if vids:
+                blocks.append(vids)
+        if not blocks:
+            print(f"⚠️ No se encontraron videos para {categoria}")
+            continue
+        send_to_followers(f"PLAY:{categoria}")
+        playlist = generate_playlist(blocks)
         threading.Thread(target=send_done_later, daemon=True).start()
         play_video_sequence(playlist)
+        print("⏳ Esperando DONE de cualquier follower...")
         done_flag.wait()
         send_to_followers("NEXT")
         done_flag.clear()
@@ -139,6 +140,7 @@ def play_audio_background():
             "--no-terminal", os.path.join(BASE_AUDIO_DIR, audio)
         ])
 
+# === MAIN ===
 def main():
     global categoria_queue
     categoria_queue = pick_categories()
