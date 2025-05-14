@@ -4,11 +4,16 @@ import random
 import threading
 import time
 from mpv import MPV
+from pathlib import Path
+import getpass
 
-# === CONFIGURACIÓN ===
-VIDEO_DIR = '/media/videos'
-AUDIO_DIR = '/media/audios'
-TEXT_INDICATOR = 'texto'
+# === Configuración dinámica de paths ===
+USERNAME = getpass.getuser()
+BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
+BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
+
+VIDEO_SUBFOLDER = "hor"  # Este líder reproduce videos horizontales
+TEXT_SUFFIX = "_text"
 FOLLOWER_PORT = 9001
 RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
@@ -18,11 +23,11 @@ DISCOVERY_MESSAGE = "LEADER_HERE"
 mpv_audio = MPV()
 mpv_audio.volume = 100
 
-# === Lista de followers activos ===
+# === Seguimiento de followers ===
 followers = set()
 followers_lock = threading.Lock()
 
-# === Función para enviar beacons por broadcast UDP ===
+# === Beacon de líder ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -33,7 +38,7 @@ def broadcast_leader():
         except:
             break
 
-# === Función para aceptar conexiones de followers ===
+# === Servidor TCP para aceptar followers ===
 def follower_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -51,7 +56,7 @@ def handle_follower(conn, addr):
         else:
             print(f"Mensaje inesperado de {addr}: {data}")
 
-# === Esperar respuesta de finalización de videos ===
+# === Esperar confirmación de reproducción finalizada ===
 def wait_for_completion(expected):
     received = 0
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -64,24 +69,43 @@ def wait_for_completion(expected):
             received += 1
     server.close()
 
-# === Reproducir audio continuo ===
+# === Reproducir audio largo en segundo plano ===
 def play_audio_background():
-    audio = random.choice(os.listdir(AUDIO_DIR))
-    mpv_audio.play(os.path.join(AUDIO_DIR, audio))
-    mpv_audio.wait_for_playback()
+    try:
+        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.endswith(('.mp3', '.wav', '.ogg'))]
+        if not audio_files:
+            print("⚠️ No se encontraron audios.")
+            return
+        audio = random.choice(audio_files)
+        mpv_audio.play(os.path.join(BASE_AUDIO_DIR, audio))
+        mpv_audio.wait_for_playback()
+    except Exception as e:
+        print(f"Error al reproducir audio: {e}")
 
-# === Elegir categorías y videos ===
+# === Obtener lista de categorías ===
 def pick_categories():
-    return random.sample(os.listdir(VIDEO_DIR), k=len(os.listdir(VIDEO_DIR)))
+    return [d for d in os.listdir(BASE_VIDEO_DIR)
+            if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
+# === Elegir 3 videos normales y 1 de texto para una categoría ===
 def pick_videos(categoria):
-    path = os.path.join(VIDEO_DIR, categoria)
-    files = os.listdir(path)
-    texto = [f for f in files if TEXT_INDICATOR in f]
-    otros = [f for f in files if TEXT_INDICATOR not in f]
-    return random.sample(otros, 3) + random.sample(texto, 1)
+    path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
+    text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
+    if not os.path.exists(path) or not os.path.exists(text_path):
+        print(f"⚠️ Carpeta faltante en categoría {categoria}")
+        return []
+    
+    otros = [f for f in os.listdir(path) if f.endswith('.mp4')]
+    textos = [f for f in os.listdir(text_path) if f.endswith('.mp4')]
 
-# === Enviar mensaje TCP a followers ===
+    if len(otros) < 3 or len(textos) < 1:
+        print(f"⚠️ No hay suficientes videos en {categoria}")
+        return []
+
+    videos = random.sample(otros, 3) + [random.choice(textos)]
+    return [os.path.join(path, v) for v in videos[:-1]] + [os.path.join(text_path, videos[-1])]
+
+# === Enviar mensaje a followers vía TCP ===
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -95,40 +119,43 @@ def send_to_followers(message):
 
 # === Bucle principal del líder ===
 def main():
-    # Arrancar beacon y servidor de followers
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
     threading.Thread(target=play_audio_background, daemon=True).start()
 
-    print("Esperando a followers... (10s)")
+    print("🔄 Esperando a followers... (10s)")
     time.sleep(10)
 
-    print("Iniciando sincronización.")
     categorias = pick_categories()
+    if not categorias:
+        print("❌ No se encontraron categorías.")
+        return
+
+    random.shuffle(categorias)
     send_to_followers("CATEGORIAS:" + ','.join(categorias))
 
     for cat in categorias:
-        print(f"\n🔹 Categoría: {cat}")
+        print(f"\n🎬 Categoría actual: {cat}")
         videos = pick_videos(cat)
-        random.shuffle(videos)
+        if not videos:
+            print("⚠️ No se pudieron cargar los videos de esta categoría.")
+            continue
 
-        # Instrucción de reproducción
         send_to_followers("PLAY:" + cat)
 
-        # Reproducir los videos en esta Raspberry
         for v in videos:
+            print(f"▶️ Reproduciendo: {os.path.basename(v)}")
             mpv = MPV()
             mpv.fullscreen = True
             mpv.hwdec = 'auto'
-            mpv.play(os.path.join(VIDEO_DIR, cat, v))
+            mpv.play(v)
             mpv.wait_for_playback()
 
-        # Esperar que followers terminen
-        print("Esperando a que los followers terminen...")
+        print("⏳ Esperando a followers...")
         wait_for_completion(expected=len(followers))
         send_to_followers("NEXT")
 
-    print("✅ Finalizado.")
+    print("\n✅ Todas las categorías reproducidas. Fin del ciclo.")
 
 if __name__ == '__main__':
     main()
