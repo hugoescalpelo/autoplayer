@@ -10,12 +10,12 @@ from tempfile import NamedTemporaryFile
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
-
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
 with open(f"/home/{USERNAME}/role.txt", "r") as role_file:
     VIDEO_SUBFOLDER = role_file.read().strip()
+
 print(f"🎭 Follower iniciado con rol: {VIDEO_SUBFOLDER}")
 
 LEADER_IP = None
@@ -23,7 +23,6 @@ CATEGORIAS = []
 ultima_categoria = None
 categoria_lock = threading.Lock()
 
-# === Comunicación con líder (solo UDP) ===
 def discover_leader():
     global LEADER_IP
     print("🔍 Buscando líder por broadcast...")
