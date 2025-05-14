@@ -6,12 +6,12 @@ import time
 import subprocess
 import getpass
 
-# === Configuración dinámica de paths ===
+# === Configuración de paths según usuario ===
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
 
-VIDEO_SUBFOLDER = "hor"
+VIDEO_SUBFOLDER = "hor"  # Este líder usa horizontal
 FOLLOWER_PORT = 9001
 RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
@@ -23,7 +23,14 @@ AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 followers = set()
 followers_lock = threading.Lock()
 
-# === Beacon para descubrimiento automático ===
+# === Validadores de extensión ===
+def is_valid_video(filename):
+    return filename.lower().endswith(VIDEO_EXTENSIONS)
+
+def is_valid_audio(filename):
+    return filename.lower().endswith(AUDIO_EXTENSIONS)
+
+# === Beacon UDP para descubrimiento ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -34,7 +41,7 @@ def broadcast_leader():
         except:
             break
 
-# === Escuchar followers ===
+# === Servidor TCP para followers ===
 def follower_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -50,9 +57,9 @@ def handle_follower(conn, addr):
             with followers_lock:
                 followers.add(addr[0])
         else:
-            print(f"Mensaje inesperado de {addr}: {data}")
+            print(f"⚠️ Mensaje inesperado de {addr}: {data}")
 
-# === Esperar confirmaciones de reproducción ===
+# === Confirmación de reproducción completada ===
 def wait_for_completion(expected):
     received = 0
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -65,46 +72,49 @@ def wait_for_completion(expected):
             received += 1
     server.close()
 
-# === Reproducir audio en segundo plano ===
+# === Audio en segundo plano ===
 def play_audio_background(audio_path):
     subprocess.Popen([
         "mpv",
         "--no-video",
-        "--audio-device=alsa/hdmi",
         "--loop=no",
         "--quiet",
         "--no-terminal",
+        "--audio-device=alsa/hdmi",
         audio_path
     ])
 
-# === Reproducir video con ajustes para Raspberry Pi ===
+# === Video en pantalla completa sin parpadeos ===
 def play_video(video_path):
     subprocess.run([
         "mpv",
         "--fs",
-        "--vo=rpi",
-        "--hwdec=rpi",
+        "--vo=gpu",
+        "--hwdec=no",
         "--no-terminal",
         "--quiet",
+        "--gapless-audio",
+        "--image-display-duration=inf",
+        "--no-stop-screensaver",
         video_path
     ])
 
-# === Elegir categorías disponibles ===
+# === Obtener todas las categorías ===
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
-# === Seleccionar videos para una categoría ===
+# === Elegir 3 normales y 1 texto aleatorios ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
 
     if not os.path.exists(path) or not os.path.exists(text_path):
-        print(f"⚠️ Carpeta faltante en categoría {categoria}")
+        print(f"⚠️ Falta carpeta en categoría: {categoria}")
         return []
 
-    otros = [f for f in os.listdir(path) if f.lower().endswith(VIDEO_EXTENSIONS)]
-    textos = [f for f in os.listdir(text_path) if f.lower().endswith(VIDEO_EXTENSIONS)]
+    otros = [f for f in os.listdir(path) if is_valid_video(f)]
+    textos = [f for f in os.listdir(text_path) if is_valid_video(f)]
 
     if len(otros) < 3 or len(textos) < 1:
         print(f"⚠️ No hay suficientes videos en {categoria}")
@@ -113,7 +123,7 @@ def pick_videos(categoria):
     seleccionados = random.sample(otros, 3) + [random.choice(textos)]
     return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
 
-# === Enviar mensaje a todos los followers ===
+# === Enviar mensaje a todos los followers registrados ===
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -122,51 +132,46 @@ def send_to_followers(message):
                     s.connect((host, FOLLOWER_PORT))
                     s.sendall(message.encode('utf-8'))
             except Exception as e:
-                print(f"Error al enviar a {host}: {e}")
+                print(f"⚠️ Error al enviar a {host}: {e}")
                 followers.remove(host)
 
-# === Bucle principal del líder ===
+# === Bucle principal infinito de reproducción ===
 def main():
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
 
-    print("🔄 Esperando followers... (10s)")
-    time.sleep(10)
-
-    # reproducir audio
-    audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
+    audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if is_valid_audio(f)]
     if audio_files:
         audio = random.choice(audio_files)
         play_audio_background(os.path.join(BASE_AUDIO_DIR, audio))
     else:
-        print("⚠️ No se encontró ningún archivo de audio en Music/")
+        print("⚠️ No hay audio en Music/")
 
     categorias = pick_categories()
     if not categorias:
         print("❌ No se encontraron categorías.")
         return
 
-    random.shuffle(categorias)
-    send_to_followers("CATEGORIAS:" + ','.join(categorias))
+    while True:
+        random.shuffle(categorias)
+        send_to_followers("CATEGORIAS:" + ','.join(categorias))
 
-    for cat in categorias:
-        print(f"\n🎬 Categoría actual: {cat}")
-        videos = pick_videos(cat)
-        if not videos:
-            print("⚠️ No se pudieron cargar los videos de esta categoría.")
-            continue
+        for cat in categorias:
+            print(f"\n🎬 Categoría actual: {cat}")
+            videos = pick_videos(cat)
+            if not videos:
+                continue
 
-        send_to_followers("PLAY:" + cat)
+            send_to_followers("PLAY:" + cat)
 
-        for v in videos:
-            print(f"▶️ Reproduciendo: {os.path.basename(v)}")
-            play_video(v)
+            for v in videos:
+                print(f"▶️ {os.path.basename(v)}")
+                play_video(v)
 
-        print("⏳ Esperando a followers...")
-        wait_for_completion(expected=len(followers))
-        send_to_followers("NEXT")
+            wait_for_completion(expected=len(followers))
+            send_to_followers("NEXT")
 
-    print("\n✅ Fin del ciclo de reproducción.")
+        print("🔁 Ciclo completado. Iniciando otro...")
 
 if __name__ == '__main__':
     main()
