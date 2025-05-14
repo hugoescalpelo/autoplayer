@@ -15,7 +15,9 @@ VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
 with open(f"/home/{USERNAME}/role.txt", "r") as role_file:
-    VIDEO_SUBFOLDER = role_file.read().strip()  # cada follower define su carpeta por FOLLOWER_ID
+    VIDEO_SUBFOLDER = role_file.read().strip()
+print(f"🎭 Follower iniciado con rol: {VIDEO_SUBFOLDER}")
+
 LEADER_IP = None
 CATEGORIAS = []
 NEXT_EVENT = threading.Event()
@@ -23,6 +25,7 @@ NEXT_EVENT = threading.Event()
 # === Comunicación con líder ===
 def discover_leader():
     global LEADER_IP
+    print("🔍 Buscando líder por broadcast...")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(('', 8888))
@@ -30,6 +33,7 @@ def discover_leader():
         data, addr = sock.recvfrom(1024)
         if data.decode().strip() == "LEADER_HERE":
             LEADER_IP = addr[0]
+            print(f"✅ Líder detectado en {LEADER_IP}")
             break
 
 # === Registro como follower ===
@@ -38,11 +42,13 @@ def register_with_leader():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((LEADER_IP, 9001))
             s.sendall(f"REGISTER:{socket.gethostname()}".encode())
+        print("📡 Registrado con el líder")
     except:
         print("❌ No se pudo registrar con el líder")
 
 # === Receptor de órdenes ===
 def listen_commands():
+    print("🎧 Esperando instrucciones del líder...")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', 9001))
     server.listen(5)
@@ -53,10 +59,13 @@ def listen_commands():
             categorias_str = data.split(":", 1)[1]
             CATEGORIAS.clear()
             CATEGORIAS.extend(categorias_str.split(","))
+            print(f"📂 Categorías recibidas: {CATEGORIAS}")
         elif data.startswith("PLAY:"):
             categoria = data.split(":", 1)[1]
+            print(f"🎬 Reproduciendo categoría: {categoria}")
             threading.Thread(target=reproduce_categoria, args=(categoria,), daemon=True).start()
         elif data == "NEXT":
+            print("➡️ Recibido NEXT")
             NEXT_EVENT.set()
 
 # === Reproducción de 4 videos como playlist ===
@@ -83,8 +92,10 @@ def generate_playlist(videos):
 def reproduce_categoria(categoria):
     videos = pick_videos(categoria)
     if not videos:
+        print("⚠️ No se encontraron suficientes videos para reproducir")
         return
     playlist = generate_playlist(videos)
+    print(f"▶️ Reproduciendo: {videos}")
     subprocess.run([
         "mpv", "--fs", "--vo=gpu", "--hwdec=no", "--no-terminal", "--quiet",
         "--gapless-audio", "--image-display-duration=inf", "--no-stop-screensaver",
@@ -95,6 +106,7 @@ def reproduce_categoria(categoria):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((LEADER_IP, 9100))
             s.sendall(b'done')
+        print("✅ Señal DONE enviada al líder")
     except:
         print("⚠️ No se pudo enviar DONE al líder")
 
@@ -104,6 +116,7 @@ def play_audio_background():
     if not files:
         return
     file = random.choice(files)
+    print(f"🔊 Reproduciendo audio ambiental: {file}")
     subprocess.Popen([
         "mpv", "--no-video", "--loop=no", "--quiet", "--no-terminal",
         os.path.join(BASE_AUDIO_DIR, file)
