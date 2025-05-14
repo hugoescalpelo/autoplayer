@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
-VIDEO_SUBFOLDERS = ["hor_text", "hor"]  # Leader solo reproduce contenido vertical
+VIDEO_SUBFOLDERS = ["hor_text", "hor"]
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
@@ -28,7 +28,7 @@ def broadcast_leader():
         sock.sendto(msg.encode(), ('<broadcast>', 8888))
         if current_category:
             sock.sendto(f"PLAY:{current_category}".encode(), ('<broadcast>', 9001))
-        time.sleep(2)  # emisión frecuente para mantener sincronía
+        time.sleep(2)
 
 # === Escuchar registros de nuevos followers ===
 def listen_for_followers():
@@ -64,17 +64,19 @@ def receive_done():
             print(f"✔️ DONE recibido de {addr[0]}")
             done_flag.set()
 
-# === Utilidades para manejo de videos ===
+# === Validadores ===
 def is_valid_video(filename):
     return filename.lower().endswith(VIDEO_EXTENSIONS)
 
 def is_valid_audio(filename):
     return filename.lower().endswith(AUDIO_EXTENSIONS)
 
+# === Categorías ===
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
+# === Selección de videos ===
 def pick_videos(categoria):
     blocks = []
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, "hor_text")
@@ -86,14 +88,15 @@ def pick_videos(categoria):
     textos = [f for f in os.listdir(text_path) if is_valid_video(f)]
     videos = [f for f in os.listdir(video_path) if is_valid_video(f)]
 
-    if len(textos) >= 1 and len(videos) >= 4:
+    if len(textos) >= 1 and len(videos) >= 3:
         text_file = random.choice(textos)
-        video_files = random.sample(videos, 4)
+        video_files = random.sample(videos, 3)
         block = [os.path.join(text_path, text_file)] + [os.path.join(video_path, v) for v in video_files]
         blocks.append(block)
 
     return blocks
 
+# === Playlist temporal ===
 def generate_playlist(blocks):
     f = NamedTemporaryFile(delete=False, mode='w', suffix=".m3u")
     for block in blocks:
@@ -102,6 +105,7 @@ def generate_playlist(blocks):
     f.close()
     return f.name
 
+# === Reproductor principal ===
 def play_video_sequence(playlist_path):
     subprocess.run([
         "mpv", "--fs", "--vo=gpu", "--hwdec=no", "--no-terminal", "--quiet",
@@ -127,10 +131,12 @@ def play_loop():
         send_to_followers("NEXT")
         done_flag.clear()
 
+# === Marcar reproducción terminada ===
 def send_done_later():
     time.sleep(2)
     done_flag.set()
 
+# === Reproductor de audio de fondo ===
 def play_audio_background():
     audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if is_valid_audio(f)]
     if audio_files:
