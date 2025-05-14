@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
-VIDEO_SUBFOLDERS = ["ver", "ver_text"]  # Leader solo reproduce contenido vertical
+VIDEO_SUBFOLDERS = ["ver_rotated", "ver_rotated_text"]  # Follower reproduce contenido vertical rotado
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
@@ -77,14 +77,19 @@ def pick_categories():
 
 def pick_videos(categoria):
     blocks = []
-    for subfolder in VIDEO_SUBFOLDERS:
-        path = os.path.join(BASE_VIDEO_DIR, categoria, subfolder)
-        if not os.path.exists(path):
-            continue
-        files = [f for f in os.listdir(path) if is_valid_video(f)]
-        if files:
-            sample = random.sample(files, min(len(files), 4))
-            blocks.append([os.path.join(path, f) for f in sample])
+    text_path = os.path.join(BASE_VIDEO_DIR, categoria, "ver_rotated_text")
+    video_path = os.path.join(BASE_VIDEO_DIR, categoria, "ver_rotated")
+    if not os.path.exists(text_path) or not os.path.exists(video_path):
+        return []
+
+    textos = [f for f in os.listdir(text_path) if is_valid_video(f)]
+    videos = [f for f in os.listdir(video_path) if is_valid_video(f)]
+
+    if len(textos) >= 1 and len(videos) >= 4:
+        text_file = random.choice(textos)
+        video_files = random.sample(videos, 4)
+        block = [os.path.join(text_path, text_file)] + [os.path.join(video_path, v) for v in video_files]
+        blocks.append(block)
     return blocks
 
 def generate_playlist(blocks):
