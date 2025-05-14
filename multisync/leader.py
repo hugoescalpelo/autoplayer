@@ -5,6 +5,7 @@ import threading
 import time
 import subprocess
 import getpass
+from tempfile import NamedTemporaryFile
 
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
@@ -75,13 +76,20 @@ def play_audio_background(audio_path):
             "--loop=no",
             "--quiet",
             "--no-terminal",
-            "--audio-device=null",  # evita error si no hay salida HDMI
+            "--audio-device=null",
             audio_path
         ])
     except Exception as e:
         print(f"⚠️ Error al reproducir audio: {e}")
 
-def play_video(video_path):
+def generate_mpv_playlist(video_paths):
+    playlist = NamedTemporaryFile(mode='w', delete=False, suffix=".m3u")
+    for path in video_paths:
+        playlist.write(f"{path}\n")
+    playlist.close()
+    return playlist.name
+
+def play_video_sequence_with_mpv(playlist_path):
     subprocess.run([
         "mpv",
         "--fs",
@@ -92,8 +100,11 @@ def play_video(video_path):
         "--gapless-audio",
         "--image-display-duration=inf",
         "--no-stop-screensaver",
-        video_path
+        "--keep-open=always",
+        "--loop-playlist=no",
+        f"--playlist={playlist_path}"
     ])
+    os.remove(playlist_path)
 
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
@@ -158,9 +169,8 @@ def main():
 
             send_to_followers("PLAY:" + cat)
 
-            for v in videos:
-                print(f"▶️ {os.path.basename(v)}")
-                play_video(v)
+            playlist_path = generate_mpv_playlist(videos)
+            play_video_sequence_with_mpv(playlist_path)
 
             wait_for_completion(expected=len(followers))
             send_to_followers("NEXT")
