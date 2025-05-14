@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
-BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"  # ajustado según indicación
+BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
 
 VIDEO_SUBFOLDER = "hor"
 FOLLOWER_PORT = 9001
@@ -23,6 +23,7 @@ AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 followers = set()
 followers_lock = threading.Lock()
 done_flag = threading.Event()
+categoria_queue = []  # Playlist de categorías predeterminada
 
 # Verifica si un archivo es un video válido
 def is_valid_video(filename):
@@ -98,17 +99,16 @@ def generate_mpv_playlist(video_paths):
     playlist.close()
     return playlist.name
 
-# Ejecuta mpv con la lista de reproducción sin cerrar la ventana entre videos
+# Ejecuta mpv con la lista de reproducción de 4 videos
 def play_video_sequence_with_mpv(playlist_path):
     subprocess.run([
         "mpv", "--fs", "--vo=gpu", "--hwdec=no", "--no-terminal", "--quiet",
         "--gapless-audio", "--image-display-duration=inf", "--no-stop-screensaver",
-        "--keep-open=always", "--loop-playlist=no", f"--playlist={playlist_path}"
+        "--keep-open=no", "--loop-playlist=no", f"--playlist={playlist_path}"
     ])
-    os.remove(playlist_path)  # Limpia el archivo de lista temporal
-    notify_done()
+    os.remove(playlist_path)
 
-# Obtiene las carpetas disponibles como categorías
+# Selecciona categorías aleatorias al arrancar
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
@@ -150,8 +150,28 @@ def notify_done():
     except Exception as e:
         print(f"⚠️ El líder no pudo notificarse a sí mismo: {e}")
 
+# Ciclo de reproducción continuo
+def play_loop():
+    while True:
+        for cat in categoria_queue:
+            print(f"\n🎬 Categoría actual: {cat}")
+            videos = pick_videos(cat)
+            if not videos:
+                continue
+
+            done_flag.clear()
+            send_to_followers("PLAY:" + cat)
+
+            playlist_path = generate_mpv_playlist(videos)
+            threading.Thread(target=notify_done, daemon=True).start()
+            play_video_sequence_with_mpv(playlist_path)
+
+            done_flag.wait()
+            send_to_followers("NEXT")
+
 # Función principal del líder
 def main():
+    global categoria_queue
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
     threading.Thread(target=response_server, daemon=True).start()
@@ -170,24 +190,9 @@ def main():
 
     while True:
         random.shuffle(categorias)
-        send_to_followers("CATEGORIAS:" + ','.join(categorias))
-
-        for cat in categorias:
-            print(f"\n🎬 Categoría actual: {cat}")
-            videos = pick_videos(cat)
-            if not videos:
-                continue
-
-            done_flag.clear()
-            send_to_followers("PLAY:" + cat)
-
-            playlist_path = generate_mpv_playlist(videos)
-            threading.Thread(target=play_video_sequence_with_mpv, args=(playlist_path,), daemon=True).start()
-
-            done_flag.wait()
-            send_to_followers("NEXT")
-
-        print("🔁 Ciclo completado. Reiniciando...")
+        categoria_queue = categorias[:]
+        send_to_followers("CATEGORIAS:" + ','.join(categoria_queue))
+        play_loop()
 
 if __name__ == '__main__':
     main()
