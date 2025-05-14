@@ -10,7 +10,7 @@ import sys
 # === Configuración de paths dinámicos ===
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
-BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
+BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
 ROLE_FILE = f"/home/{USERNAME}/device_role.txt"
 
 # === Configuración de red ===

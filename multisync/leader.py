@@ -10,7 +10,7 @@ import getpass
 # === Configuración dinámica de paths ===
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
-BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
+BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
 
 VIDEO_SUBFOLDER = "hor"  # Este líder usa videos horizontales
 TEXT_SUFFIX = "_text"
