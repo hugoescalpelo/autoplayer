@@ -22,7 +22,7 @@ LEADER_IP = None
 CATEGORIAS = []
 NEXT_EVENT = threading.Event()
 
-# === Comunicación con líder ===
+# === Comunicación con líder (solo UDP) ===
 def discover_leader():
     global LEADER_IP
     print("🔍 Buscando líder por broadcast...")
@@ -31,30 +31,28 @@ def discover_leader():
     sock.bind(('', 8888))
     while True:
         data, addr = sock.recvfrom(1024)
-        if data.decode().strip() == "LEADER_HERE":
+        if data.decode().startswith("LEADER_HERE"):
             LEADER_IP = addr[0]
             print(f"✅ Líder detectado en {LEADER_IP}")
             break
 
-# === Registro como follower ===
+# === Registro como follower vía UDP ===
 def register_with_leader():
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((LEADER_IP, 9001))
-            s.sendall(f"REGISTER:{socket.gethostname()}".encode())
-        print("📡 Registrado con el líder")
-    except:
-        print("❌ No se pudo registrar con el líder")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.sendto(f"REGISTER:{socket.gethostname()}".encode(), (LEADER_IP, 8899))
+        print("📡 Registrado con el líder (UDP)")
+    except Exception as e:
+        print(f"❌ No se pudo registrar con el líder: {e}")
 
-# === Receptor de órdenes ===
+# === Receptor de órdenes por UDP ===
 def listen_commands():
     print("🎧 Esperando instrucciones del líder...")
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(('', 9001))
-    server.listen(5)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(('', 9001))
     while True:
-        conn, _ = server.accept()
-        data = conn.recv(1024).decode()
+        data, _ = sock.recvfrom(2048)
+        data = data.decode()
         if data.startswith("CATEGORIAS:"):
             categorias_str = data.split(":", 1)[1]
             CATEGORIAS.clear()
@@ -103,12 +101,11 @@ def reproduce_categoria(categoria):
     ])
     os.remove(playlist)
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((LEADER_IP, 9100))
-            s.sendall(b'done')
-        print("✅ Señal DONE enviada al líder")
-    except:
-        print("⚠️ No se pudo enviar DONE al líder")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.sendto(b'done', (LEADER_IP, 9100))
+        print("✅ Señal DONE enviada al líder (UDP)")
+    except Exception as e:
+        print(f"⚠️ No se pudo enviar DONE al líder: {e}")
 
 # === Audio ambiental continuo ===
 def play_audio_background():
@@ -133,3 +130,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
