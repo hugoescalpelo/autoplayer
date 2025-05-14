@@ -5,7 +5,6 @@ import threading
 import time
 import subprocess
 import getpass
-from tempfile import NamedTemporaryFile
 
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
@@ -82,29 +81,22 @@ def play_audio_background(audio_path):
     except Exception as e:
         print(f"⚠️ Error al reproducir audio: {e}")
 
-def generate_mpv_playlist(video_paths):
-    playlist = NamedTemporaryFile(mode='w', delete=False, suffix=".m3u")
-    for path in video_paths:
-        playlist.write(f"{path}\n")
-    playlist.close()
-    return playlist.name
-
-def play_video_sequence_with_mpv(playlist_path):
-    subprocess.run([
-        "mpv",
-        "--fs",
-        "--vo=gpu",
-        "--hwdec=no",
-        "--no-terminal",
-        "--quiet",
-        "--gapless-audio",
-        "--image-display-duration=inf",
-        "--no-stop-screensaver",
-        "--keep-open=always",
-        "--loop-playlist=no",
-        f"--playlist={playlist_path}"
-    ])
-    os.remove(playlist_path)
+def play_video_sequence(videos):
+    for video_path in videos:
+        subprocess.run([
+            "mpv",
+            "--fs",
+            "--vo=gpu",
+            "--hwdec=no",
+            "--no-terminal",
+            "--quiet",
+            "--gapless-audio",
+            "--image-display-duration=inf",
+            "--no-stop-screensaver",
+            "--keep-open=yes",
+            video_path
+        ])
+        time.sleep(1)  # pequeña pausa para estabilidad visual
 
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
@@ -115,20 +107,18 @@ def pick_videos(categoria):
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
 
     if not os.path.exists(path) or not os.path.exists(text_path):
-        print(f"⚠️ Falta carpeta en categoría: {categoria}")
         return []
 
     otros = [f for f in os.listdir(path) if is_valid_video(f)]
     textos = [f for f in os.listdir(text_path) if is_valid_video(f)]
 
-    if len(otros) < 3 or len(textos) < 1:
-        print(f"⚠️ No hay suficientes videos en {categoria}")
+    if len(otros) >= 3 and len(textos) >= 1:
+        texto_video = random.choice(textos)
+        normales = random.sample(otros, 3)
+        return [os.path.join(text_path, texto_video)] + [os.path.join(path, v) for v in normales]
+    else:
+        print(f"⚠️ No suficientes videos en {categoria}")
         return []
-
-    texto_video = random.choice(textos)
-    normales = random.sample(otros, 3)
-
-    return [os.path.join(text_path, texto_video)] + [os.path.join(path, v) for v in normales]
 
 def send_to_followers(message):
     with followers_lock:
@@ -168,9 +158,7 @@ def main():
                 continue
 
             send_to_followers("PLAY:" + cat)
-
-            playlist_path = generate_mpv_playlist(videos)
-            play_video_sequence_with_mpv(playlist_path)
+            play_video_sequence(videos)
 
             wait_for_completion(expected=len(followers))
             send_to_followers("NEXT")
