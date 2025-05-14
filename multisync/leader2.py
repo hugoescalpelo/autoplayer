@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music/audios"
-VIDEO_SUBFOLDERS = ["hor", "hor_text"]  # Leader solo reproduce contenido vertical
+VIDEO_SUBFOLDERS = ["hor_text", "hor"]  # Leader solo reproduce contenido vertical
 VIDEO_EXTENSIONS = ('.mp4', '.mov')
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
@@ -79,6 +79,7 @@ def pick_videos(categoria):
     blocks = []
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, "hor_text")
     video_path = os.path.join(BASE_VIDEO_DIR, categoria, "hor")
+
     if not os.path.exists(text_path) or not os.path.exists(video_path):
         return []
 
@@ -90,6 +91,7 @@ def pick_videos(categoria):
         video_files = random.sample(videos, 4)
         block = [os.path.join(text_path, text_file)] + [os.path.join(video_path, v) for v in video_files]
         blocks.append(block)
+
     return blocks
 
 def generate_playlist(blocks):
