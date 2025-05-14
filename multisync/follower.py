@@ -19,6 +19,10 @@ RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
 DISCOVERY_MESSAGE = "LEADER_HERE"
 
+# === Extensiones soportadas ===
+VIDEO_EXTENSIONS = ('.mp4', '.mov')
+AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
+
 # === Reproductor de audio independiente ===
 mpv_audio = MPV()
 mpv_audio.volume = 100
@@ -27,7 +31,6 @@ mpv_audio.volume = 100
 leader_ip = None
 categorias = []
 
-# === Determinar carpeta según rol ===
 def get_video_folder_by_role(role):
     if role == 'leader' or role == 'follower2':
         return "hor", "hor_text"
@@ -37,7 +40,6 @@ def get_video_folder_by_role(role):
         print("⛔ Rol desconocido.")
         sys.exit(1)
 
-# === Descubrimiento del líder por broadcast UDP ===
 def discover_leader(timeout=30):
     global leader_ip
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -57,7 +59,6 @@ def discover_leader(timeout=30):
         sock.close()
     return leader_ip
 
-# === Registrar follower con el líder ===
 def register_with_leader():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
@@ -68,10 +69,9 @@ def register_with_leader():
             print(f"❌ Error al registrar: {e}")
             sys.exit(1)
 
-# === Reproducir audio independiente ===
 def play_audio_background():
     try:
-        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.endswith(('.mp3', '.wav', '.ogg'))]
+        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
         if not audio_files:
             print("⚠️ No se encontraron audios.")
             return
@@ -81,7 +81,6 @@ def play_audio_background():
     except Exception as e:
         print(f"⚠️ Error en audio: {e}")
 
-# === Escuchar instrucciones del líder ===
 def listen_for_commands(video_folder, text_folder):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -100,7 +99,6 @@ def listen_for_commands(video_folder, text_folder):
         elif data == "NEXT":
             continue
 
-# === Elegir y reproducir 4 videos (3 normales + 1 texto) ===
 def pick_videos(categoria, video_folder, text_folder):
     path = os.path.join(BASE_VIDEO_DIR, categoria, video_folder)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, text_folder)
@@ -108,8 +106,8 @@ def pick_videos(categoria, video_folder, text_folder):
         print(f"⚠️ Carpeta faltante en {categoria}")
         return []
 
-    otros = [f for f in os.listdir(path) if f.endswith('.mp4')]
-    textos = [f for f in os.listdir(text_path) if f.endswith('.mp4')]
+    otros = [f for f in os.listdir(path) if f.lower().endswith(VIDEO_EXTENSIONS)]
+    textos = [f for f in os.listdir(text_path) if f.lower().endswith(VIDEO_EXTENSIONS)]
 
     if len(otros) < 3 or len(textos) < 1:
         print(f"⚠️ No hay suficientes videos.")
@@ -118,7 +116,6 @@ def pick_videos(categoria, video_folder, text_folder):
     seleccionados = random.sample(otros, 3) + [random.choice(textos)]
     return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
 
-# === Reproducir los videos de la categoría ===
 def play_category(categoria, video_folder, text_folder):
     videos = pick_videos(categoria, video_folder, text_folder)
     if not videos:
@@ -134,7 +131,6 @@ def play_category(categoria, video_folder, text_folder):
         mpv.wait_for_playback()
     notify_done()
 
-# === Notificar finalización al líder ===
 def notify_done():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
@@ -144,7 +140,6 @@ def notify_done():
         except Exception as e:
             print(f"❌ Error al notificar al líder: {e}")
 
-# === Obtener rol desde archivo ===
 def get_role():
     try:
         with open(ROLE_FILE, 'r') as f:
@@ -153,7 +148,6 @@ def get_role():
         print("⛔ No se pudo leer el archivo de rol.")
         sys.exit(1)
 
-# === Main ===
 def main():
     role = get_role()
     if not role.startswith("follower"):

@@ -19,6 +19,10 @@ RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
 DISCOVERY_MESSAGE = "LEADER_HERE"
 
+# === Extensiones soportadas ===
+VIDEO_EXTENSIONS = ('.mp4', '.mov')
+AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
+
 # === MPV para audio continuo ===
 mpv_audio = MPV()
 mpv_audio.volume = 100
@@ -27,7 +31,6 @@ mpv_audio.volume = 100
 followers = set()
 followers_lock = threading.Lock()
 
-# === Beacon de líder ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -38,7 +41,6 @@ def broadcast_leader():
         except:
             break
 
-# === Servidor TCP para aceptar followers ===
 def follower_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -56,7 +58,6 @@ def handle_follower(conn, addr):
         else:
             print(f"Mensaje inesperado de {addr}: {data}")
 
-# === Esperar confirmación de reproducción finalizada ===
 def wait_for_completion(expected):
     received = 0
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -69,10 +70,9 @@ def wait_for_completion(expected):
             received += 1
     server.close()
 
-# === Reproducir audio largo en segundo plano ===
 def play_audio_background():
     try:
-        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.endswith(('.mp3', '.wav', '.ogg'))]
+        audio_files = [f for f in os.listdir(BASE_AUDIO_DIR) if f.lower().endswith(AUDIO_EXTENSIONS)]
         if not audio_files:
             print("⚠️ No se encontraron audios.")
             return
@@ -82,12 +82,10 @@ def play_audio_background():
     except Exception as e:
         print(f"Error al reproducir audio: {e}")
 
-# === Obtener lista de categorías ===
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
-# === Elegir 3 videos normales y 1 de texto para una categoría ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
@@ -95,17 +93,16 @@ def pick_videos(categoria):
         print(f"⚠️ Carpeta faltante en categoría {categoria}")
         return []
     
-    otros = [f for f in os.listdir(path) if f.endswith('.mp4')]
-    textos = [f for f in os.listdir(text_path) if f.endswith('.mp4')]
+    otros = [f for f in os.listdir(path) if f.lower().endswith(VIDEO_EXTENSIONS)]
+    textos = [f for f in os.listdir(text_path) if f.lower().endswith(VIDEO_EXTENSIONS)]
 
     if len(otros) < 3 or len(textos) < 1:
         print(f"⚠️ No hay suficientes videos en {categoria}")
         return []
 
-    videos = random.sample(otros, 3) + [random.choice(textos)]
-    return [os.path.join(path, v) for v in videos[:-1]] + [os.path.join(text_path, videos[-1])]
+    seleccionados = random.sample(otros, 3) + [random.choice(textos)]
+    return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
 
-# === Enviar mensaje a followers vía TCP ===
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -117,7 +114,6 @@ def send_to_followers(message):
                 print(f"Error al enviar a {host}: {e}")
                 followers.remove(host)
 
-# === Bucle principal del líder ===
 def main():
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
