@@ -6,12 +6,11 @@ import time
 import subprocess
 import getpass
 
-# === Configuración de paths según usuario ===
 USERNAME = getpass.getuser()
 BASE_VIDEO_DIR = f"/home/{USERNAME}/Videos/videos_hd_final"
 BASE_AUDIO_DIR = f"/home/{USERNAME}/Music"
 
-VIDEO_SUBFOLDER = "hor"  # Este líder usa horizontal
+VIDEO_SUBFOLDER = "hor"
 FOLLOWER_PORT = 9001
 RESPONSE_PORT = 9100
 BROADCAST_PORT = 8888
@@ -23,14 +22,12 @@ AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 followers = set()
 followers_lock = threading.Lock()
 
-# === Validadores de extensión ===
 def is_valid_video(filename):
     return filename.lower().endswith(VIDEO_EXTENSIONS)
 
 def is_valid_audio(filename):
     return filename.lower().endswith(AUDIO_EXTENSIONS)
 
-# === Beacon UDP para descubrimiento ===
 def broadcast_leader():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -41,7 +38,6 @@ def broadcast_leader():
         except:
             break
 
-# === Servidor TCP para followers ===
 def follower_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('', FOLLOWER_PORT))
@@ -59,7 +55,6 @@ def handle_follower(conn, addr):
         else:
             print(f"⚠️ Mensaje inesperado de {addr}: {data}")
 
-# === Confirmación de reproducción completada ===
 def wait_for_completion(expected):
     received = 0
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -72,19 +67,20 @@ def wait_for_completion(expected):
             received += 1
     server.close()
 
-# === Audio en segundo plano ===
 def play_audio_background(audio_path):
-    subprocess.Popen([
-        "mpv",
-        "--no-video",
-        "--loop=no",
-        "--quiet",
-        "--no-terminal",
-        "--audio-device=alsa/hdmi",
-        audio_path
-    ])
+    try:
+        subprocess.Popen([
+            "mpv",
+            "--no-video",
+            "--loop=no",
+            "--quiet",
+            "--no-terminal",
+            "--audio-device=null",  # evita error si no hay salida HDMI
+            audio_path
+        ])
+    except Exception as e:
+        print(f"⚠️ Error al reproducir audio: {e}")
 
-# === Video en pantalla completa sin parpadeos ===
 def play_video(video_path):
     subprocess.run([
         "mpv",
@@ -99,12 +95,10 @@ def play_video(video_path):
         video_path
     ])
 
-# === Obtener todas las categorías ===
 def pick_categories():
     return [d for d in os.listdir(BASE_VIDEO_DIR)
             if os.path.isdir(os.path.join(BASE_VIDEO_DIR, d))]
 
-# === Elegir 3 normales y 1 texto aleatorios ===
 def pick_videos(categoria):
     path = os.path.join(BASE_VIDEO_DIR, categoria, VIDEO_SUBFOLDER)
     text_path = os.path.join(BASE_VIDEO_DIR, categoria, f"{VIDEO_SUBFOLDER}_text")
@@ -120,10 +114,11 @@ def pick_videos(categoria):
         print(f"⚠️ No hay suficientes videos en {categoria}")
         return []
 
-    seleccionados = random.sample(otros, 3) + [random.choice(textos)]
-    return [os.path.join(path, v) for v in seleccionados[:3]] + [os.path.join(text_path, seleccionados[3])]
+    texto_video = random.choice(textos)
+    normales = random.sample(otros, 3)
 
-# === Enviar mensaje a todos los followers registrados ===
+    return [os.path.join(text_path, texto_video)] + [os.path.join(path, v) for v in normales]
+
 def send_to_followers(message):
     with followers_lock:
         for host in list(followers):
@@ -135,7 +130,6 @@ def send_to_followers(message):
                 print(f"⚠️ Error al enviar a {host}: {e}")
                 followers.remove(host)
 
-# === Bucle principal infinito de reproducción ===
 def main():
     threading.Thread(target=broadcast_leader, daemon=True).start()
     threading.Thread(target=follower_server, daemon=True).start()
