@@ -104,7 +104,7 @@ def reproduce_categoria(categoria):
     subprocess.run([
         "mpv", "--fs", "--vo=gpu", "--hwdec=no", "--no-terminal", "--quiet",
         "--gapless-audio", "--image-display-duration=inf", "--no-stop-screensaver",
-        "--keep-open=no", "--loop-playlist=no", f"--playlist={playlist}"
+        "--keep-open=no", "--loop-playlist=no", "--vf=rotate=2", f"--playlist={playlist}"
     ])
     os.remove(playlist)
     try:
